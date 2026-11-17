@@ -1,0 +1,6 @@
+// Candidate cards under the Vendor field: one full-width card per row.
+// Core declares `--KanbanRecord-width: 320px` on `.o_kanban_renderer` itself, so
+// it must be overridden on that element; the `<kanban class>` lands on its parent.
+.o_ai_vendor_candidate_cards .o_kanban_renderer {
+    --KanbanRecord-width: 100%;
+}

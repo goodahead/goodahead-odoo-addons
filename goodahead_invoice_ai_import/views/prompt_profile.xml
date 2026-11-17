@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_prompt_profile_list" model="ir.ui.view">
+        <field name="name">goodahead.invoice.prompt.profile.list</field>
+        <field name="model">goodahead.invoice.prompt.profile</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="note"/>
+                <field name="builtin"/>
+                <field name="active" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_prompt_profile_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.prompt.profile.form</field>
+        <field name="model">goodahead.invoice.prompt.profile</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="alert alert-info" role="alert" invisible="not builtin">
+                        This profile ships with the module and its text follows
+                        the module's code. To adjust it, use
+                        <b>Action ▸ Duplicate</b> and edit the copy.
+                    </div>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Canada"/></h1>
+                    </div>
+                    <group>
+                        <field name="note"/>
+                        <field name="builtin" invisible="not builtin"/>
+                        <field name="active" invisible="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Instructions" name="prose">
+                            <group>
+                                <field name="locale_origin" readonly="builtin"/>
+                                <field name="locale_tax" readonly="builtin"/>
+                                <field name="locale_identifiers" readonly="builtin"/>
+                                <field name="locale_payment" readonly="builtin"/>
+                                <field name="locale_rules" readonly="builtin"/>
+                            </group>
+                        </page>
+                        <page string="Field Descriptions" name="schema">
+                            <div class="text-muted mb-2">
+                                Lines of the JSON schema the model answers in.
+                                Change the descriptions freely; each part must
+                                keep its JSON keys.
+                            </div>
+                            <group>
+                                <field name="locale_seller_identifiers" readonly="builtin"/>
+                                <field name="locale_seller_region" readonly="builtin"/>
+                                <field name="locale_seller_bank" readonly="builtin"/>
+                                <field name="locale_buyer_identifier" readonly="builtin"/>
+                                <field name="locale_buyer_region" readonly="builtin"/>
+                                <field name="locale_payment_means" readonly="builtin"/>
+                                <field name="locale_unit_code" readonly="builtin"/>
+                                <field name="locale_tax_fields" readonly="builtin"/>
+                            </group>
+                        </page>
+                        <page string="Composed Prompt" name="preview">
+                            <field name="prompt_preview" class="font-monospace" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_prompt_profile_search" model="ir.ui.view">
+        <field name="name">goodahead.invoice.prompt.profile.search</field>
+        <field name="model">goodahead.invoice.prompt.profile</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter name="custom" string="Custom" domain="[('builtin', '=', False)]"/>
+                <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_prompt_profile" model="ir.actions.act_window">
+        <field name="name">Extraction Prompts</field>
+        <field name="res_model">goodahead.invoice.prompt.profile</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add a prompt profile</p>
+            <p>
+                A profile is the country-specific wording of the invoice
+                extraction prompt: tax, identifiers, bank details and payment
+                references. Duplicate a shipped profile to start a new one,
+                then pick it for a company under
+                <b>Settings ▸ Accounting ▸ AI Invoice Import</b>.
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_prompt_profile"
+        name="Extraction Prompts"
+        parent="menu_ai_invoice_import_config"
+        action="action_prompt_profile"
+        sequence="20"
+    />
+</odoo>

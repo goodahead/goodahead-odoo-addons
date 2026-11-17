@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Group checkboxes are otherwise only rendered in developer mode ("Extra Rights"),
+         so they are added to the Access Rights page directly. -->
+    <record id="view_users_form_bill_approval" model="ir.ui.view">
+        <field name="name">res.users.form.bill.approval</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='access_rights']" position="inside">
+                <group string="Vendor Bill Approval" invisible="share">
+                    <field name="bill_approval_may_review"/>
+                    <field name="bill_approval_may_approve"/>
+                    <!-- A substitute is only relevant for step 2 approvers. -->
+                    <field name="bill_approval_substitute_id"
+                           invisible="not bill_approval_may_approve"
+                           options="{'no_create': True}"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- The user sets their own substitute on My Preferences (`readonly="0"` plus
+         `SELF_WRITEABLE_FIELDS`). Hidden via the self-readable mirror field, because `groups=`
+         does not hide fields on the preferences form. -->
+    <record id="view_users_form_simple_modif_bill_approval" model="ir.ui.view">
+        <field name="name">res.users.preferences.form.bill.approval</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form_simple_modif"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='other_preferences']" position="inside">
+                <field name="bill_approval_may_approve" invisible="1"/>
+                <field name="bill_approval_substitute_id"
+                       class="o_bill_approval_substitute_pref"
+                       readonly="0"
+                       options="{'no_create': True}"
+                       invisible="not bill_approval_may_approve"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

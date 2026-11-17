@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Dedicated activity types rather than core's "To Do": the activities are looked up by
+        type to be closed or removed, and with "To Do" that would also close users' own notes
+        on the same document. `res_model` must be account.move, otherwise core silently falls
+        back to the default type. Not `noupdate`, so wording can be corrected on upgrade.
+    -->
+    <record id="mail_activity_type_bill_to_post" model="mail.activity.type">
+        <field name="name">Bill to Post</field>
+        <field name="icon">fa-book</field>
+        <field name="res_model">account.move</field>
+        <!-- Due today, so the task shows in the activity bell's Today group at once. -->
+        <field name="delay_count">0</field>
+        <field name="delay_unit">days</field>
+        <field name="summary">Post this bill, then pay it</field>
+        <!-- Explicitly empty: a default user would override the computed assignee, including
+             the deliberate "nobody" outcome. -->
+        <field name="default_user_id" eval="False"/>
+        <field name="category">default</field>
+    </record>
+
+    <!-- Task for the chosen approver; a dedicated type for the same reasons as above. -->
+    <record id="mail_activity_type_bill_to_approve" model="mail.activity.type">
+        <field name="name">Document to Approve</field>
+        <field name="icon">fa-check-square-o</field>
+        <field name="res_model">account.move</field>
+        <field name="delay_count">0</field>
+        <field name="delay_unit">days</field>
+        <field name="summary">Approve this document (step 2)</field>
+        <field name="default_user_id" eval="False"/>
+        <field name="category">default</field>
+    </record>
+
+</odoo>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- The review dialog opened by "Send for Review". -->
+    <record id="view_bill_approval_review_form" model="ir.ui.view">
+        <field name="name">bill.approval.review.form</field>
+        <field name="model">bill.approval.review</field>
+        <field name="arch" type="xml">
+            <form string="Who should approve this?">
+                <p class="text-muted">
+                    Reviewing confirms that the partner, the dates, the lines and the accounts
+                    are right. Choose who gives approval step 2, or leave it empty to let
+                    anyone holding "Bills: may approve (step 2)" approve.
+                </p>
+                <group>
+                    <!-- `force_save` is required: readonly fields are not sent on save
+                         otherwise, and the dialog would have no documents. -->
+                    <field name="move_ids" widget="many2many_tags" readonly="1" force_save="1"/>
+                    <field name="approver_id"
+                           class="o_bill_approval_review_approver"
+                           placeholder="Anyone holding step 2"
+                           options="{'no_create': True}"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object" string="Send for Review"
+                            class="btn-primary" data-hotkey="q"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"
+                            data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- The same dialog from a list (Action > Send for Review); one choice applies to all
+         selected documents. Only shown to users holding the review level. -->
+    <record id="action_bill_approval_review" model="ir.actions.act_window">
+        <field name="name">Send for Review</field>
+        <field name="res_model">bill.approval.review</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="account.model_account_move"/>
+        <field name="binding_view_types">list</field>
+        <field name="group_ids" eval="[(4, ref('goodahead_bill_approval.group_bill_approval_1'))]"/>
+    </record>
+</odoo>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Review dialog, opened from the bill form and from a row of the
+        suggestions queue. Columns other than the two values have a fixed width,
+        so free text cannot squeeze the comparison.
+    -->
+
+    <record id="view_vendor_data_review_form" model="ir.ui.view">
+        <field name="name">goodahead.vendor.data.review.form</field>
+        <field name="model">goodahead.vendor.data.review</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="heading" nolabel="1" readonly="1"
+                       class="fs-5 fw-bold mb-0"/>
+                <p class="text-muted">
+                    Everything the vendor record was MISSING has already been
+                    filled in and logged. These are the details that contradict
+                    it, together with anything that always waits for a person —
+                    a bank account or a tax id. Only the ticked ones are
+                    written.
+                </p>
+
+                <!-- A changed bank account is the classic invoice-fraud pattern,
+                     so the warning gets a full-width line rather than a column. -->
+                <div class="alert alert-danger py-2 px-3" role="alert"
+                     invisible="not has_sensitive">
+                    <field name="has_sensitive" invisible="1"/>
+                    A bank account or a tax ID is on this list. It is not
+                    ticked, and it should not be ticked until somebody has
+                    confirmed the number with the vendor — by telephone, on a
+                    number you already had, not one printed on this invoice.
+                </div>
+
+                <field name="line_ids" nolabel="1">
+                    <!-- `editable` is required: a Boolean in a read-only list
+                         renders as a disabled checkbox. -->
+                    <list editable="bottom" create="false" delete="false"
+                          decoration-danger="is_sensitive">
+                        <field name="selected" width="70px"/>
+                        <field name="field_label" readonly="1" width="150px"/>
+                        <!-- Pinned wide so the table scrolls instead of the
+                             values being truncated. -->
+                        <field name="invoice_value" readonly="1" width="230px"/>
+                        <field name="record_value" readonly="1" width="230px"/>
+                        <!-- An explicit column, so the marker does not rely on
+                             colour alone. -->
+                        <field name="is_sensitive" readonly="1" width="80px"/>
+                        <field name="why" readonly="1" width="180px"/>
+                        <field name="field_name" column_invisible="True"/>
+                        <field name="note" readonly="1" optional="hide"/>
+                    </list>
+                </field>
+
+                <footer>
+                    <button name="action_apply_selected" type="object"
+                            string="Apply selected" class="btn-primary"
+                            data-hotkey="q"/>
+                    <!-- "Not now" keeps the rows pending for the queue; Cancel
+                         just closes. -->
+                    <button name="action_not_now" type="object"
+                            string="Not now" class="btn-secondary"
+                            help="Leaves every row pending, so they go to the vendor-data queue. Never the same person's problem twice."/>
+                    <button string="Cancel" class="btn-secondary"
+                            special="cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_bill_approval_refusal_review,bill.approval.refusal.review,model_bill_approval_refusal,goodahead_bill_approval.group_bill_approval_1,1,1,1,1
+access_bill_approval_refusal_approve,bill.approval.refusal.approve,model_bill_approval_refusal,goodahead_bill_approval.group_bill_approval_2,1,1,1,1
+access_bill_approval_review_review,bill.approval.review.review,model_bill_approval_review,goodahead_bill_approval.group_bill_approval_1,1,1,1,1

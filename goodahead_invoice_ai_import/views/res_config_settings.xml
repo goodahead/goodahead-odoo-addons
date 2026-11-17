@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        The Claude API key, "Test Connection" and "Sync Models" belong to
+        `goodahead_claude` and are rendered in its own settings block.
+    -->
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.ai.invoice.import</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='account']" position="inside">
+                <block title="AI Invoice Import" name="ai_invoice_import">
+                    <setting string="Extraction Model"
+                             help="Claude model used to read invoice PDFs, overriding the company default set under Claude. Leave empty to use the company default. The model must support PDF input.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <label for="claude_invoice_model_id" class="col-lg-3 o_light_label"/>
+                                <!-- `_resolve_model` returns an explicit model
+                                     unchanged, so PDF support is enforced by this
+                                     domain. `pdf_supported` is set by Sync Models. -->
+                                <field name="claude_invoice_model_id"
+                                       domain="[('pdf_supported', '=', True)]"/>
+                            </div>
+                            <div class="mt16 text-muted">
+                                The API key and the model list live under
+                                <b>Settings &gt; Claude</b>. Run
+                                <b>Sync Models</b> there before the first import,
+                                or no model will resolve.
+                            </div>
+                        </div>
+                    </setting>
+                    <setting string="Extraction Prompt"
+                             help="The country wording the invoice-reading prompt uses: tax, identifiers, bank details and payment references. Leave empty to choose it from the company's country.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <label for="ai_invoice_prompt_profile_id" class="col-lg-3 o_light_label"/>
+                                <field name="ai_invoice_prompt_profile_id"
+                                       placeholder="From the company's country"/>
+                            </div>
+                            <button type="action"
+                                    name="%(action_prompt_profile)d"
+                                    string="Manage Extraction Prompts"
+                                    class="btn-link ps-0 mt8"
+                                    icon="oi-arrow-right"/>
+                        </div>
+                    </setting>
+                    <!--
+                        This `help` is always visible under the label, unlike the
+                        field's tooltip, so the risk of removing a domain is
+                        stated here as well.
+                    -->
+                    <setting string="Domains That Never Identify a Vendor"
+                             help="Domains that must never identify a vendor — free mail providers, and placeholder domains an import writes — on top of the list shipped with this module. Leaving it empty keeps the shipped list; it does not switch the protection off. An entry written as -gmail.com REMOVES that domain, and if exactly one contact on it can receive bills, every invoice printing an address there is filed against that one company — see the field's tooltip.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <field name="ai_public_email_domains"
+                                       widget="text"
+                                       placeholder="suomi24.fi, elisanet.fi, online.no"/>
+                            </div>
+                        </div>
+                    </setting>
+                    <setting string="Expense Categories"
+                             help="Map expense types to accounting accounts for imported lines">
+                        <button type="action"
+                                name="%(action_expense_category)d"
+                                string="Configure Expense Categories"
+                                class="btn-link ps-0"
+                                icon="oi-arrow-right"/>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+<!--
+    The template name is module-prefixed: a duplicate OWL template name silently breaks the whole
+    web.assets_web bundle. The outer `t-if` hides the item until the server sends data, which it
+    never does for users holding neither level. The badge is red whenever anything is waiting.
+-->
+<t t-name="goodahead_bill_approval.BillApprovalMenu">
+    <t t-if="state.data">
+        <Dropdown position="'bottom-end'" state="dropdown" menuClass="'o-bill-approval-menu'">
+            <button t-att-title="title" t-att-aria-label="title"
+                    class="o_bill_approval_systray_toggle">
+                <i class="fa fa-lg fa-check-square-o" role="img"/>
+                <span t-if="total"
+                      class="badge rounded-pill text-bg-danger o_bill_approval_systray_total"
+                      t-esc="total"/>
+            </button>
+            <t t-set-slot="content">
+                <div class="d-flex flex-column list-group list-group-flush"
+                     style="min-width: 18rem;">
+                    <!-- Rows, order, labels and actions all come from the server. -->
+                    <div t-foreach="rows" t-as="row" t-key="row.id"
+                         class="list-group-item list-group-item-action d-flex justify-content-between cursor-pointer o_bill_approval_systray_row"
+                         t-att-name="row.id"
+                         t-on-click="() => this.openQueue(row)">
+                        <span t-esc="row.label"/>
+                        <span t-attf-class="badge rounded-pill {{ row.count ? 'text-bg-danger' : 'text-bg-secondary' }}"
+                              t-esc="row.count"/>
+                    </div>
+                    <div t-if="!total"
+                         class="list-group-item text-muted text-center opacity-75 o_bill_approval_systray_empty"
+                         t-esc="emptyLabel"/>
+                </div>
+            </t>
+        </Dropdown>
+    </t>
+</t>
+
+</templates>

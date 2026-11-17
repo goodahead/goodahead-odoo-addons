@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data>
+        <menuitem id="menu_claude_root"
+                  name="Claude"
+                  parent="base.menu_custom"
+                  sequence="20"
+                  groups="base.group_system"/>
+        <menuitem id="menu_claude_model"
+                  name="Models"
+                  parent="menu_claude_root"
+                  action="action_claude_model"
+                  sequence="10"
+                  groups="base.group_system"/>
+    </data>
+</odoo>

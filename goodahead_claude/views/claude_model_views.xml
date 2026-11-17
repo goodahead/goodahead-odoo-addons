@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data>
+        <record id="claude_model_tree" model="ir.ui.view">
+            <field name="name">goodahead.claude.model.list</field>
+            <field name="model">goodahead.claude.model</field>
+            <field name="arch" type="xml">
+                <list string="Claude Models" decoration-muted="not active">
+                    <field name="name"/>
+                    <field name="model_api_id"/>
+                    <field name="pdf_supported"/>
+                    <field name="max_input_tokens"/>
+                    <field name="created_at" optional="show"/>
+                    <field name="active" column_invisible="True"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="claude_model_form" model="ir.ui.view">
+            <field name="name">goodahead.claude.model.form</field>
+            <field name="model">goodahead.claude.model</field>
+            <field name="arch" type="xml">
+                <form string="Claude Model">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="name"/>
+                                <field name="model_api_id"/>
+                                <field name="active"/>
+                            </group>
+                            <group>
+                                <field name="pdf_supported"/>
+                                <field name="max_input_tokens"/>
+                                <field name="created_at"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="claude_model_search" model="ir.ui.view">
+            <field name="name">goodahead.claude.model.search</field>
+            <field name="model">goodahead.claude.model</field>
+            <field name="arch" type="xml">
+                <search string="Claude Models">
+                    <field name="name"/>
+                    <field name="model_api_id"/>
+                    <filter name="pdf_supported" string="PDF-capable"
+                            domain="[('pdf_supported', '=', True)]"/>
+                    <filter name="inactive" string="Archived"
+                            domain="[('active', '=', False)]"/>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_claude_model" model="ir.actions.act_window">
+            <field name="name">Claude Models</field>
+            <field name="res_model">goodahead.claude.model</field>
+            <field name="view_mode">list,form</field>
+        </record>
+    </data>
+</odoo>

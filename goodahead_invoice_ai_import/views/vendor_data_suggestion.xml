@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Queue of vendor-data suggestions deferred from bills with "Not now", for
+        whoever maintains vendor records. Defaults to pending rows grouped by
+        vendor. A `search_default_*` naming a missing filter is silently ignored,
+        so the two filter names are pinned by a test.
+    -->
+
+    <record id="view_vendor_data_suggestion_list" model="ir.ui.view">
+        <field name="name">goodahead.vendor.data.suggestion.list</field>
+        <field name="model">goodahead.vendor.data.suggestion</field>
+        <field name="arch" type="xml">
+            <!-- Bank account and tax id rows are shown in red and skipped by the
+                 bulk button. A row click opens the review dialog for that row's
+                 vendor (core's `action`/`type` hook on `<list>`). -->
+            <list create="false" action="action_open_review" type="object"
+                  decoration-danger="is_sensitive"
+                  decoration-muted="state == 'dismissed'">
+                <header>
+                    <button name="action_apply_selected" type="object"
+                            string="Apply ticked" class="btn-primary"
+                            help="Applies the ticked rows. A bank account or a tax id is left pending on purpose — select-all is one click, and a money detail should get somebody's individual attention."/>
+                </header>
+                <!-- Fixed widths on the secondary columns leave the two value
+                     columns the remaining space. The vendor column is hidden by
+                     default because the list is grouped by vendor. -->
+                <field name="partner_id" readonly="1" optional="hide"/>
+                <field name="field_label" readonly="1" width="150px"/>
+                <field name="invoice_value" readonly="1"/>
+                <field name="record_value" readonly="1"/>
+                <field name="is_sensitive" string="Money" readonly="1"
+                       width="80px"/>
+                <field name="move_id" readonly="1" optional="show"
+                       width="140px"/>
+                <field name="note" optional="hide"/>
+                <field name="state" readonly="1" widget="badge" width="110px"
+                       decoration-info="state == 'pending'"
+                       decoration-success="state == 'applied'"
+                       decoration-muted="state == 'dismissed'"/>
+                <field name="create_date" readonly="1" optional="hide"/>
+                <button name="action_apply" type="object" string="Apply"
+                        class="btn-link" icon="fa-check"
+                        invisible="state != 'pending'"/>
+                <button name="action_dismiss" type="object" string="Dismiss"
+                        class="btn-link" icon="fa-times"
+                        invisible="state != 'pending'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_vendor_data_suggestion_search" model="ir.ui.view">
+        <field name="name">goodahead.vendor.data.suggestion.search</field>
+        <field name="model">goodahead.vendor.data.suggestion</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="move_id"/>
+                <field name="field_label"/>
+                <field name="invoice_value"/>
+                <!-- `pending` and `group_by_partner` are referenced by the
+                     action's context. -->
+                <filter name="pending" string="Pending"
+                        domain="[('state', '=', 'pending')]"/>
+                <filter name="applied" string="Applied"
+                        domain="[('state', '=', 'applied')]"/>
+                <filter name="dismissed" string="Dismissed"
+                        domain="[('state', '=', 'dismissed')]"/>
+                <separator/>
+                <filter name="sensitive" string="Bank or tax id"
+                        domain="[('is_sensitive', '=', True)]"/>
+                <!-- No `expand`/`string` on the group: 19.0's RNG rejects them. -->
+                <group>
+                    <filter name="group_by_partner" string="Vendor"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_by_field" string="Detail"
+                            context="{'group_by': 'field_label'}"/>
+                    <filter name="group_by_state" string="State"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_vendor_data_suggestion" model="ir.actions.act_window">
+        <field name="name">Vendor Data Suggestions</field>
+        <field name="res_model">goodahead.vendor.data.suggestion</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_vendor_data_suggestion_search"/>
+        <field name="context">{'search_default_pending': 1, 'search_default_group_by_partner': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nothing is waiting.</p>
+            <p>
+                Every imported bill fills in what the vendor record was missing
+                by itself. What lands here is the other half: a detail on an
+                invoice that CONTRADICTS the vendor, and the two that always
+                wait for a person — a bank account and a tax id.
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_vendor_data_suggestion"
+        name="Vendor Data Suggestions"
+        parent="account.menu_finance_payables"
+        action="action_vendor_data_suggestion"
+        sequence="101"
+        groups="account.group_account_user,account.group_account_manager"
+    />
+</odoo>

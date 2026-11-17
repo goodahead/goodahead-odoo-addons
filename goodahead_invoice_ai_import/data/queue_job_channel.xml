@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Dedicated channel for AI extraction jobs, separate from `root.claude_api` so
+    a bulk upload of slow extractions cannot starve other Claude features.
+    Capacity is set in odoo.conf (`channels = root:N,root.ai_import:1`).
+-->
+<odoo noupdate="1">
+    <record id="channel_ai_import" model="queue.job.channel">
+        <field name="name">ai_import</field>
+        <field name="parent_id" ref="queue_job.channel_root"/>
+    </record>
+</odoo>

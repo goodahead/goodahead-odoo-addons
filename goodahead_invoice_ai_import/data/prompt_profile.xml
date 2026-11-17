@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        The two shipped prompt profiles. Their text is NOT here: it lives in
+        `lib/claude_client.py` (`LOCALE_BLOCKS`) and the function below copies
+        it into the records on every install and upgrade. The country-neutral
+        block has no record — it is the fallback for a company whose country
+        has no profile, not something to choose.
+    -->
+    <record id="prompt_profile_us" model="goodahead.invoice.prompt.profile">
+        <field name="name">United States</field>
+        <field name="sequence">10</field>
+        <field name="code">us</field>
+        <field name="builtin" eval="True"/>
+        <field name="note">Sales and use tax, EIN, ABA routing and account numbers, check remittance addresses. Chosen automatically for a company in the United States.</field>
+    </record>
+    <record id="prompt_profile_eu" model="goodahead.invoice.prompt.profile">
+        <field name="name">European Union</field>
+        <field name="sequence">20</field>
+        <field name="code">eu</field>
+        <field name="builtin" eval="True"/>
+        <field name="note">VAT with country-prefixed VAT numbers, national registration numbers (Y-tunnus, organisationsnummer), IBAN/BIC, structured payment references (viitenumero, KID, OCR, RF). Chosen automatically for a company in the EU or EEA.</field>
+    </record>
+
+    <function model="goodahead.invoice.prompt.profile" name="_sync_builtin_profiles"/>
+</odoo>

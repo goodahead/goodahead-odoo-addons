@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <record id="expense_category_goods" model="goodahead.expense.category">
+            <field name="code">goods</field>
+            <field name="name">Purchase of Goods</field>
+        </record>
+        <record id="expense_category_services" model="goodahead.expense.category">
+            <field name="code">services</field>
+            <field name="name">Professional Services</field>
+        </record>
+        <record id="expense_category_transport" model="goodahead.expense.category">
+            <field name="code">transport</field>
+            <field name="name">Shipping &amp; Transport</field>
+        </record>
+        <record id="expense_category_it_software" model="goodahead.expense.category">
+            <field name="code">it_software</field>
+            <field name="name">IT &amp; Software</field>
+        </record>
+        <record id="expense_category_office" model="goodahead.expense.category">
+            <field name="code">office</field>
+            <field name="name">Office Supplies</field>
+        </record>
+        <record id="expense_category_marketing" model="goodahead.expense.category">
+            <field name="code">marketing</field>
+            <field name="name">Marketing &amp; Advertising</field>
+        </record>
+        <record id="expense_category_rent" model="goodahead.expense.category">
+            <field name="code">rent</field>
+            <field name="name">Rent &amp; Facilities</field>
+        </record>
+        <record id="expense_category_subscriptions" model="goodahead.expense.category">
+            <field name="code">subscriptions</field>
+            <field name="name">Subscriptions &amp; Licenses</field>
+        </record>
+        <record id="expense_category_discounts" model="goodahead.expense.category">
+            <field name="code">discounts</field>
+            <field name="name">Discounts &amp; Rebates</field>
+        </record>
+        <record id="expense_category_insurance" model="goodahead.expense.category">
+            <field name="code">insurance</field>
+            <field name="name">Insurance</field>
+        </record>
+        <record id="expense_category_travel" model="goodahead.expense.category">
+            <field name="code">travel</field>
+            <field name="name">Travel &amp; Accommodation</field>
+        </record>
+        <record id="expense_category_utilities" model="goodahead.expense.category">
+            <field name="code">utilities</field>
+            <field name="name">Utilities &amp; Telecom</field>
+        </record>
+        <record id="expense_category_other" model="goodahead.expense.category">
+            <field name="code">other</field>
+            <field name="name">Other Expenses</field>
+        </record>
+    </data>
+</odoo>

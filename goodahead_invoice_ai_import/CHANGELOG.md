@@ -1,0 +1,243 @@
+# Changelog
+
+All notable changes to `goodahead_invoice_ai_import`, newest first.
+
+## 19.0.3.33.0
+
+- Fixed: two import jobs for the same vendor running at the same time could both try
+  to store the vendor's new phone or web domain. The second failed on the unique
+  constraint, its bill lost its post-processing (expense accounts, bank check,
+  printed totals, chatter note) and the import was marked failed although the bill
+  existed. Identifier rows are now inserted so that a row another transaction stored
+  first is skipped.
+- The failed-imports systray bubble and the menus *AI Invoice Imports*, *Vendor Data
+  Suggestions* and *Configuration > AI Invoice Import* are now shown only to
+  Bookkeepers (`account.group_account_user`) and Administrators
+  (`account.group_account_manager`), not to Invoicing-only users. Access rights are
+  unchanged.
+
+## 19.0.3.32.0
+
+- New **Extraction Prompts** (`goodahead.invoice.prompt.profile`) under Accounting >
+  Configuration > AI Invoice Import. Two built-in, read-only profiles (United States,
+  European Union) are refreshed on every upgrade; duplicate one to get an editable
+  copy. Saving validates that every part has text and that schema parts keep the
+  expected JSON keys.
+- New company setting **Extraction Prompt**. Left empty (the default), the prompt is
+  chosen from the company's country as before.
+- Migration: a database upgraded from an earlier fork of this module that registered
+  `mail_alias_ai_invoice_import` keeps the alias untouched; only the stale xmlid is
+  released.
+
+## 19.0.3.31.1
+
+- The "(tax ...)" part of the total-mismatch banner no longer wraps mid-phrase.
+- Tests that post bills now pass on databases where `goodahead_bill_approval` is
+  installed (it is still not a dependency).
+
+## 19.0.3.31.0
+
+- The bill now carries exactly the document's lines; no extra tax line is added.
+- The printed total and printed tax are stored on the bill (`ai_document_total`,
+  `ai_document_tax`). While either differs from the bill by more than 0.02, a red
+  banner shows both figures. It clears itself once the bill matches and does not
+  block posting.
+- Removed the **Account for Printed Tax** setting introduced in 19.0.3.30.0.
+
+## 19.0.3.30.0
+
+- First version of the total-mismatch banner. (Its added "printed tax" line and the
+  related setting were removed again in 19.0.3.31.0.)
+- Removed the `ai_tax_needs_review` flag and its **Tax checked** button from
+  19.0.3.29.0.
+
+## 19.0.3.29.0
+
+- An invoice that prints tax only as a document total (no tax per line) is imported
+  instead of failing. A null line `tax_amount` is accepted; every other null amount
+  still fails validation.
+
+## 19.0.3.28.0
+
+- The import no longer completes step 1 of `goodahead_bill_approval`. An imported bill
+  enters the review queue like any other bill, so a person compares it with the PDF
+  before it moves on.
+
+## 19.0.3.27.0
+
+- Optional integration with `goodahead_bill_approval` (soft dependency, looked up at
+  runtime). Superseded by 19.0.3.28.0.
+
+## 19.0.3.26.0
+
+- Fixed: the business-registry step of the vendor matcher could return one of the
+  company's own partners; all matcher steps now apply the same refusal rules.
+- The vendor guard now uses the bill's company rather than the queue job's
+  `env.company`.
+- Fixed: refused partners could fill the search window and hide a legitimate vendor;
+  they are now excluded in the search domain.
+
+## 19.0.3.25.0
+
+- Fixed: the "vendor not recognised" explanation appeared on every manually created
+  vendor bill. It now shows only on bills created by an import.
+
+## 19.0.3.24.0
+
+- The vendor line and the candidate cards show draft bills next to posted bills, so
+  "no posted bills yet" is no longer misleading for a vendor with drafts.
+- The "vendor not recognised" explanation is shown even when no candidate is found.
+- New **Create contact from this invoice** button on an unmatched imported bill. It creates
+  the contact only when a person clicks it; nothing is created automatically.
+
+## 19.0.3.23.0
+
+- A document's vendor is never one of the company's own partners. The matcher refuses
+  the bill's own company partner and its contacts, any partner linked to a user, and
+  contacts that belong solely to another company. Intercompany vendors (another
+  company of the same database invoicing this one) still match.
+- Bank details read from a document are never written onto the company's own partner.
+
+## 19.0.3.22.0
+
+- Withdrew the country-aware (E.164) phone key and its data migration from
+  19.0.3.11.0. Phone identifiers are again matched on their last ten digits.
+
+## 19.0.3.21.0
+
+- An import refused because the Odoo core build is not recognised is now marked
+  failed with a readable error, so it can be retried once the core is fixed.
+
+## 19.0.3.18.0 - 19.0.3.20.0
+
+- The "no currency printed" rule now checks the PDF itself (`lib/pdf_currency.py`)
+  instead of relying on the model's report. The scan covers the text layer, form
+  fields and annotations, and falls back to the model only when the PDF has no
+  text layer. No new Python dependency.
+- Re-importing from stored JSON also re-checks the attached PDF.
+- Candidate cards use correct singular/plural wording.
+
+## 19.0.3.16.0 - 19.0.3.17.0
+
+- The excluded email-domain list now means "domains that identify nobody": public
+  mail providers plus common placeholder and misspelt domains. A domain is used for
+  matching only when it identifies a single vendor.
+- Hardening of the substitute-PDF policy and of partner identifier handling.
+
+## 19.0.3.15.0
+
+- The public mail-provider list now covers Nordic and additional US/global providers.
+- New setting **Domains That Never Identify a Vendor** (system parameter
+  `goodahead_invoice_ai_import.public_email_domains`) adds domains on top of the
+  shipped list. Leaving it empty keeps the shipped list; an entry such as
+  `-example.com` removes a shipped domain.
+
+## 19.0.3.13.0 - 19.0.3.14.0
+
+- The system prompt is no longer US-only: it is composed of country-neutral
+  procedures plus one locale block chosen from the importing company's country (US,
+  EU or a neutral fallback). The US prompt is unchanged byte for byte.
+- The default currency falls back to the company's currency instead of a hard-coded
+  value.
+
+## 19.0.3.12.0
+
+- New menu Settings > Technical > Partner Identifiers to inspect the phone and domain
+  keys the matcher uses.
+
+## 19.0.3.10.0 - 19.0.3.11.0
+
+- The vendor PDF is always made the bill's main attachment before decoding. The
+  global `disable_pdf_in_xml` backstop is applied only on core builds that have the
+  substitute-PDF feature; a stray parameter written on other builds is removed.
+
+## 19.0.3.4.0 - 19.0.3.9.0
+
+- Support for both 19.0 vendor-bill import pipelines: the newer search-plan pipeline
+  and the legacy `_retrieve_partner` pipeline found on older 19.0 builds. The module
+  detects which one it runs on and refuses to import on an unrecognised core rather
+  than silently skipping its hooks.
+- Vendor matching moved to `res.partner` so both pipelines use the same rules.
+- No vendor is created automatically on the legacy pipeline either.
+- Vendor-aware product matching on the legacy pipeline: an unknown vendor product
+  code no longer falls through to the company's own internal reference.
+- The manifest changelog moved to this file (Odoo silently ignores manifests over
+  100 KiB).
+
+## 19.0.3.3.0
+
+- An invoice that prints no currency at all is assigned the currency of the vendor's
+  country when vendor and buyer are in the same country. Ambiguous symbols on
+  cross-border invoices still fail the import.
+
+## 19.0.3.2.0
+
+- The bill shows how many posted bills exist for the selected vendor in the bill's
+  company, with a highlighted warning when there are none.
+
+## 19.0.3.1.0
+
+- The bill preview shows the vendor's PDF instead of an Odoo-generated placeholder.
+  Migration sets `account_edi_ubl_cii.disable_pdf_in_xml` once; an administrator who
+  turns it off later keeps it off.
+
+## 19.0.3.0.0
+
+- **Behaviour change:** no vendor is created automatically. An unmatched bill keeps
+  an empty vendor and shows up to three candidate vendors (ranked by posted bills)
+  with a **Use this** button.
+- The extraction reads the vendor's phone, email and website. New model
+  `goodahead.partner.identifier` stores every phone and web domain a vendor has been
+  seen under; the matcher uses them between the business id and the name. Ambiguous
+  matches and public mail-provider domains are ignored.
+- Empty fields on the vendor (address, phone, email, website) are filled from the
+  invoice automatically. Conflicting values become **Vendor Data Suggestions**,
+  reviewed from the bill or from a queue. Bank account and tax id are never applied
+  automatically; the vendor name is never suggested.
+- Migration and install hook seed identifiers from the existing contact book.
+
+## 19.0.2.4.0
+
+- Extraction is checked arithmetically (lines vs. subtotal, tax, total, payable). A
+  failure stores the JSON so a person can correct one figure and re-import without a
+  second API call.
+- A missing amount is an error instead of silently becoming 0.00.
+- The Extraction Model setting lists only PDF-capable models.
+
+## 19.0.2.3.0
+
+- Currency is resolved by an ordered procedure (printed ISO code, then unambiguous
+  symbol, then country evidence) instead of a symbol lookup; an unresolved currency
+  fails the import.
+- The model decides whether a document is an invoice or a credit note.
+
+## 19.0.2.2.0
+
+- Dates and numbers are read with a locale-aware procedure; the vendor's country is a
+  hint, not proof, and a genuinely ambiguous date is left empty.
+
+## 19.0.2.1.0
+
+- Peppol `EndpointID` is emitted only where Odoo core maps the country's EAS scheme to
+  the VAT number, and only for valid values. Other countries get no endpoint, so no
+  vendor country can fail an import.
+
+## 19.0.2.0.0
+
+- **Extraction contract change:** `seller` gains `routing_number`, `account_number`,
+  `state_code` and `remit_to_address`. Stored extractions from earlier versions
+  still re-import.
+- US support: USD fallback currency, sales/use tax and EIN in the prompt, ABA routing
+  number checksum, US units.
+- Expense categories are shared across companies; the account is per company.
+  Migration converts existing categories.
+- No mail alias is shipped. Create one by hand and point it at `ai.invoice.import`;
+  the per-message PDF limit and size limit are enforced in code.
+
+## 19.0.1.2.0 - 19.0.1.3.0
+
+- Initial release in this repository. The Claude client, API key and model registry
+  come from `goodahead_claude`.
+- Hooks for the search-plan UBL import pipeline; vendor product codes are matched by
+  core, and an unknown vendor code no longer falls through to the internal reference.
+- Fixed: a correct vendor bank account could be removed from an ordinary bill.

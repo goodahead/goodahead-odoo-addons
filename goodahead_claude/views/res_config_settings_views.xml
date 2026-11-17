@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data>
+        <record id="res_config_settings_view_form" model="ir.ui.view">
+            <field name="name">res.config.settings.view.form.inherit.goodahead.claude</field>
+            <field name="model">res.config.settings</field>
+            <!-- Inherits mail's view, which defines the <block id="emails"> anchor. -->
+            <field name="inherit_id" ref="mail.res_config_settings_view_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//block[@id='emails']" position="after">
+                    <block title="Claude Connection" id="goodahead_claude_settings">
+                        <setting id="goodahead_claude_api_key"
+                                 string="API Key"
+                                 help="Anthropic API key — console.anthropic.com → Settings → API Keys.">
+                            <field name="claude_api_key" password="True"/>
+                            <div class="mt8">
+                                <button name="action_claude_test_connection"
+                                        string="Test Connection"
+                                        type="object"
+                                        class="btn-link ps-0"
+                                        icon="fa-plug"/>
+                            </div>
+                        </setting>
+                        <setting id="goodahead_claude_model"
+                                 string="Default Model"
+                                 help="Used when callers don't specify a model. Click &quot;Sync Models&quot; to populate from the API.">
+                            <field name="claude_default_model_id"/>
+                            <div class="mt8">
+                                <button name="action_claude_sync_models"
+                                        string="Sync Models"
+                                        type="object"
+                                        class="btn-link ps-0"
+                                        icon="fa-refresh"/>
+                            </div>
+                        </setting>
+                        <setting id="goodahead_claude_max_tokens"
+                                 string="Max Output Tokens"
+                                 help="Default cap on tokens Claude may emit per request. Callers may override per request.">
+                            <field name="claude_max_output_tokens"/>
+                        </setting>
+                    </block>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>
