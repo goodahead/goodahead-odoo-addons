@@ -14,3 +14,4 @@ from . import test_chosen_approver
 from . import test_credit_notes
 from . import test_review_dialog
 from . import test_payment_refund
+from . import test_user_form

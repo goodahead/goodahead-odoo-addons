@@ -35,8 +35,8 @@ CURRENCY_SYMBOL_KEY = "currency_symbol"
 # Set by this module, never by the model: the country the currency was taken from.
 CURRENCY_INFERRED_KEY = "currency_inferred_from_country"
 # Set by this module from the PDF's text layer (see `pdf_currency`). It outranks
-# the model's `currency_symbol`, which has been seen to vary between runs on the
-# same document. Both answers are stored so an audit can see which one decided.
+# the model's `currency_symbol`, which can vary between runs on the same
+# document. Both answers are stored so an audit can see which one decided.
 CURRENCY_MARKING_KEY = "currency_marking"
 
 # "Not reported" and "reported null" are different answers; only null allows
@@ -1326,7 +1326,7 @@ class ClaudeInvoiceExtractor:
             )
 
     def _validate_line_magnitude(self, where, quantity, price_unit, line_total, data):
-        """Catch a quantity or unit price misread by a factor of 10 or more.
+        """Catch a quantity or unit price misread by a factor of 100 or more.
 
         The document sums cannot see this: the line total is right, and the
         generated unit price is derived from it. See `LINE_RATIO_LIMIT`.

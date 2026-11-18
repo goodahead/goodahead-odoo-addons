@@ -4,7 +4,7 @@
 """The vendor matcher on `res.partner`, reachable without any core import pipeline.
 
 1. `res.partner._ai_find_vendor` works with every EDI entry point replaced by a
-   raiser, so it also runs on the legacy core.
+   raiser, so it works on either import pipeline.
 2. Each matching rule has one implementation: stubbing the shared helper changes
    the answer of both the search-plan step and `_ai_find_vendor`.
 3. `account.move._ai_match_existing_vendor` delegates to `_ai_find_vendor`.
@@ -87,7 +87,7 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
 
     # ------------------------------------------------------------------
-    # The five rules, through the hoisted method
+    # The five rules
     # ------------------------------------------------------------------
 
     def test_it_matches_on_vat(self):
@@ -228,8 +228,8 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         ]
 
     def test_the_matcher_runs_with_every_edi_entry_point_booby_trapped(self):
-        """The matcher works with every EDI entry point raising, as on the legacy
-        core where none of them is reached during a vendor-bill import."""
+        """The matcher works with every EDI entry point raising, so it does not
+        depend on either import pipeline."""
         guards = self._edi_guard()
         for guard in guards:
             guard.start()

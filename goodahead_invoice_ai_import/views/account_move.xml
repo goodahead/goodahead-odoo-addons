@@ -19,7 +19,7 @@
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
-            <!-- The widget makes this anchor unique in the 19.0 form; if it stops
+            <!-- The widget makes this anchor unique in core's form; if it stops
                  matching, install fails loudly instead of the feature vanishing. -->
             <xpath expr="//field[@name='partner_id'][@widget='res_partner_many2one']"
                    position="after">

@@ -202,7 +202,7 @@ class TestVendorBillCount(TransactionCase):
 class TestTheCountReadsAsEnglish(TransactionCase):
     """Singular and plural "posted bill(s)" in the chatter note and the bill form.
 
-    `_()` has no plural form in 19.0, so the form uses two spans switched by
+    Odoo's `_()` has no plural form, so the form uses two spans switched by
     `invisible=`; they are checked through `get_view`.
     """
 

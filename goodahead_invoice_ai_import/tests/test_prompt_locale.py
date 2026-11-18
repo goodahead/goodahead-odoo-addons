@@ -33,8 +33,9 @@ from odoo.addons.goodahead_invoice_ai_import.lib.claude_client import (
     locale_for_country,
 )
 
-# The US prompt before it was split into locale blocks, extracted with
-# `ast.literal_eval` so it is the exact string the interpreter built.
+# Golden copy of the US prompt as a single string, captured with
+# `ast.literal_eval` so it is the exact string the interpreter builds. The
+# composed US prompt must stay byte-identical to it.
 GOLDEN = (
     pathlib.Path(__file__).parent / "data" / "system_prompt_us_55ac5e7.txt"
 ).read_text(encoding="utf-8")
@@ -332,7 +333,7 @@ class TestEveryLocaleKeepsTheProcedures(BaseCase):
             derivation_recipes(was),
             "the scanner cannot see the wording this finding was about",
         )
-        self.assertNotIn("remove hyphen, prepend", was)  # the old test's blind spot
+        self.assertNotIn("remove hyphen, prepend", was)  # a literal check misses it
 
         rule = ("Copy identifiers and account numbers EXACTLY as printed. Do "
                 "not add or remove hyphens, do not add a country prefix that "
@@ -586,9 +587,10 @@ class TestTheSlotGuardCanStillFail(BaseCase):
         self.assertIn("locale_zz", str(caught.exception))
 
     def test_a_marker_the_slot_regex_cannot_parse_is_named(self):
-        """The case that produced `[]`. `@@locale-tax@@` has a hyphen, so
-        `_SLOT_RE` (`[a-z_]+`) does not match it, the substitution leaves it
-        standing, and it would have gone to the API."""
+        """`@@locale-tax@@` has a hyphen, so `_SLOT_RE` (`[a-z_]+`) does not
+        match it and the substitution leaves it standing. The guard must still
+        name it, rather than report an empty list of slots, so it never
+        reaches the API."""
         template = claude_client.PROCEDURES + "\n@@locale-tax@@\n"
         with patch.object(claude_client, "PROCEDURES", template):
             with self.assertRaises(ValueError) as caught:

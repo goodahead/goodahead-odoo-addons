@@ -3,11 +3,12 @@
 
 """The legacy adapter: `res.partner._retrieve_partner_with_name`.
 
-On older 19.0 builds `res.partner._retrieve_partner` runs VAT, domain,
-phone/mail and finally `_retrieve_partner_with_name`, each company-scoped and
-then with ``company_id = False``. On the search-plan build the same method is a
-deprecated stub with no core callers, so the override is live on one build and
-inert on the other.
+On the legacy pipeline (Odoo 18.0 and early 19.0 builds)
+`res.partner._retrieve_partner` runs VAT, domain, phone/mail and finally
+`_retrieve_partner_with_name`, each company-scoped and then with
+``company_id = False``. On the search-plan pipeline (newer 19.0 builds) the same
+method is a deprecated stub with no core callers, so the override is live on 18.0
+and inert there.
 
 Only the business id, phone and domain rules are composed at this slot, the
 same three the search-plan adapter inserts. Core has already run its own VAT
@@ -146,8 +147,9 @@ class TestTheNameSlotAdapter(TransactionCase):
         self.assertEqual(ours, self.vendor, "control: core's own name step does match here")
 
     def test_the_name_step_itself_is_narrowed_to_the_other_build_s_exact_match(self):
-        """The name step uses ``=ilike`` (exact, case-insensitive) on both
-        builds; older builds used a substring ``ilike``.
+        """The adapter's name step uses ``=ilike`` (exact, case-insensitive),
+        like the search-plan pipeline; the legacy core's own step uses a
+        substring ``ilike``.
 
         See `res.partner._ai_retrieve_partner_with_exact_name`.
         """
@@ -202,7 +204,7 @@ class TestTheNameSlotAdapter(TransactionCase):
 
         ``=ilike`` matches a subset of ``ilike``, and the caller accepts only
         ``len(partner) == 1``, so a pair the substring step refused as
-        ambiguous is now decided, as it already is on the search-plan build.
+        ambiguous is decided, as it already is on the search-plan build.
         """
         exact, _longer = self._near_name_pair()
 
@@ -379,9 +381,6 @@ class TestBothProfilesAreCovered(TransactionCase):
     the run-time registries are only complete at the end of the run.
     """
 
-    #: Last. See the class docstring.
-    test_sequence = 1000
-
     def test_the_gates_actually_fired_on_this_bench(self):
         live = self.env["account.move"]._ai_core_profile()
         self.assertIn(live, (PROFILE_SEARCH_PLAN, PROFILE_LEGACY))
@@ -464,6 +463,11 @@ class TestBothProfilesAreCovered(TransactionCase):
             "the bench must know which bench it is before anything gated on it "
             "is believed",
         )
+
+
+# Odoo 18.0's test metaclass resets `test_sequence` to 0 when the class is
+# created, so a class attribute is ignored; set it afterwards instead.
+TestBothProfilesAreCovered.test_sequence = 1000
 
 
 class _ImportHarness(TransactionCase):
@@ -655,7 +659,7 @@ class TestASubstringNameIsNotAVendor(_ImportHarness):
     """A printed name that is only a substring of a partner's name does not
     decide the vendor, on either build.
 
-    Older builds' name step used ``ilike``; a wrong match would leave
+    The legacy core's name step uses ``ilike``; a wrong match would leave
     `partner_id` set and suppress the banner, candidate cards and learning.
     The fixture prints no phone, so only core's name step can decide. This
     class is deliberately not profile-gated: the outcome must be the same on

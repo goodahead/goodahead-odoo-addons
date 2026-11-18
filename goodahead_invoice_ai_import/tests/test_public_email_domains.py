@@ -40,10 +40,10 @@ class TestPublicEmailDomains(TransactionCase):
 
     def setUp(self):
         super().setUp()
-        # The effective list is cached on the registry ("stable") and the cache is
+        # The effective list is cached on the registry (default cache) and the cache is
         # not rolled back with the test transaction, so clear it on both ends.
-        self.addCleanup(self.env.registry.clear_cache, "stable")
-        self.env.registry.clear_cache("stable")
+        self.addCleanup(self.env.registry.clear_cache)
+        self.env.registry.clear_cache()
 
     def _set(self, value):
         self.Params.set_param(PUBLIC_EMAIL_DOMAINS_PARAM, value)
@@ -91,7 +91,7 @@ class TestPublicEmailDomains(TransactionCase):
         """
         for emptied in ("", "   ", "\n \n"):
             self._set(emptied)
-            self.env.registry.clear_cache("stable")
+            self.env.registry.clear_cache()
             self.assertEqual(
                 self.Identifier._non_identifying_domains(),
                 SHIPPED_FLOOR,
@@ -269,8 +269,8 @@ class TestDomainsThatIdentifyNobody(TransactionCase):
 
     def setUp(self):
         super().setUp()
-        self.addCleanup(self.env.registry.clear_cache, "stable")
-        self.env.registry.clear_cache("stable")
+        self.addCleanup(self.env.registry.clear_cache)
+        self.env.registry.clear_cache()
 
     def test_an_import_placeholder_identifies_nobody(self):
         """An import placeholder address normalises to nothing."""
@@ -336,7 +336,7 @@ class TestDomainsThatIdentifyNobody(TransactionCase):
         """Every shipped rule, suffixes included, can be removed with `-`."""
         self.Params = self.env["ir.config_parameter"].sudo()
         self.Params.set_param(PUBLIC_EMAIL_DOMAINS_PARAM, "-emaildomain.com, -rr.com")
-        self.env.registry.clear_cache("stable")
+        self.env.registry.clear_cache()
         self.assertEqual(
             self.Identifier._normalise_domain("1000000001@emaildomain.com"),
             "emaildomain.com",
@@ -439,7 +439,7 @@ class TestTheSettingIsReachableFromTheUI(TransactionCase):
 
     def setUp(self):
         super().setUp()
-        self.addCleanup(self.env.registry.clear_cache, "stable")
+        self.addCleanup(self.env.registry.clear_cache)
 
     def test_saving_the_settings_form_changes_what_the_matcher_answers(self):
         Identifier = self.env["goodahead.partner.identifier"]

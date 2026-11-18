@@ -36,8 +36,8 @@
                         title="Clear both approvals and send this bill back to the review queue, with a reason."/>
             </xpath>
 
-            <!-- Above core's own alerts (`id='alerts'`). -->
-            <xpath expr="//div[@id='alerts']" position="before">
+            <!-- Right below the header, above core's own alerts. -->
+            <xpath expr="//header" position="after">
                 <div class="alert alert-warning o_bill_approval_alert_1" role="alert"
                      invisible="move_type not in ('in_invoice', 'in_refund', 'out_refund') or state != 'draft' or bill_approval_state != 'to_review'">
                     <b>This document has not been reviewed.</b>
@@ -173,11 +173,11 @@
                         domain="[('bill_approval_state', '=', 'reviewed'), ('state', '=', 'draft'), ('move_type', 'in', ['in_invoice', 'in_refund']), '|', '|', ('bill_approval_approver_id', '=', False), ('bill_approval_approver_id', '=', uid), ('bill_approval_approver_id.bill_approval_substitute_id', '=', uid)]"
                         help="Vendor bills that have been reviewed and that YOU can approve: no approver was chosen, or you are the chosen approver or their substitute."/>
                 <!-- Bills set to post themselves on their accounting date (`auto_post`) are not
-                     waiting for anyone. Matches `QUEUE_TO_POST_DOMAIN`. -->
+                     waiting for anyone. Matches `BILL_QUEUE_TO_POST_DOMAIN`. -->
                 <filter name="bill_approved_to_post"
                         string="Approved, to Post"
                         domain="[('bill_approval_state', '=', 'approved'), ('auto_post', '=', 'no'), ('state', '=', 'draft'), ('move_type', 'in', ['in_invoice', 'in_refund'])]"
-                        help="Vendor bills that carry both approvals and are still draft — the book keeper posts them, then takes them to payment."/>
+                        help="Vendor bills that carry both approvals and are still draft — the bookkeeper posts them, then takes them to payment."/>
             </filter>
             <!-- Inherited from the customer search view (`mode=primary`); removed here. -->
             <filter name="credit_note_awaiting_review" position="replace"/>

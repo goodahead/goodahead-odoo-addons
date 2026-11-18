@@ -83,9 +83,8 @@ class AccountMove(models.Model):
     ai_vendor_review_deferred = fields.Boolean(
         string="Vendor review deferred",
         copy=False,
-        help="“Not now”. The suggestions stay PENDING — they are the queue's "
-        "work, not this bill's — and the line stops asking the person who is "
-        "trying to file a bill. Never her problem twice.",
+        help="Set by “Not now”. The suggestions stay pending in the Vendor "
+        "Data Suggestions queue, and this bill stops asking about them.",
     )
 
     # The printed total and tax, compared live against the bill so a
@@ -375,12 +374,6 @@ class AccountMove(models.Model):
             }
         )
 
-    def _get_edi_decoder(self, file_data, new=False):
-        # PDFs are decoded by the ai.invoice.import queue; this override only
-        # keeps the 'type' key present for account_edi_finvoice compatibility.
-        file_data.setdefault("type", file_data.get("import_file_type", ""))
-        return super()._get_edi_decoder(file_data, new)
-
     @api.model
     def _ai_extract_and_generate_ubl(self, pdf_bytes, company):
         """Extract invoice data from PDF via Claude and generate Peppol XML.
@@ -633,13 +626,11 @@ class AccountMove(models.Model):
             "raw": xml_bytes,
             "xml_tree": xml_tree,
             "type": "xml",
+            "filename": "invoice.xml",
             "mimetype": "application/xml",
             # The decoder accesses these by key (not .get) — always provide them.
             "attachment": attachment or self.env["ir.attachment"],
-            "origin_attachment": self.env["ir.attachment"],
-            "origin_import_file_type": "pdf",
         }
-        ubl_file_data["import_file_type"] = move._get_import_file_type(ubl_file_data)
 
         seller = extracted.get("seller")
         seller = seller if isinstance(seller, dict) else {}
@@ -654,20 +645,19 @@ class AccountMove(models.Model):
             # The whole seller dict, so the vendor matcher works on either
             # import pipeline.
             ai_seller=seller,
-            # Marks the decode as ours. `account.edi.ubl` is a shared abstract
-            # model, and `_import_ubl_create_missing_customer` is suppressed
-            # only for an AI extraction — not for a genuine Peppol document.
+            # Marks the decode as ours. `account.edi.common` is a shared
+            # abstract model, and vendor creation is suppressed only for an AI
+            # extraction — not for a genuine Peppol document.
             ai_invoice_import=True,
         )
-        decoder_info = super(AccountMove, self_ctx)._get_edi_decoder(
-            ubl_file_data, new
-        )
-        if not decoder_info or not decoder_info.get("decoder"):
-            return (
-                "No UBL decoder found for generated XML (type: %s)"
-                % ubl_file_data["import_file_type"]
-            )
-        return decoder_info["decoder"](move, ubl_file_data, new)
+        # Odoo 18 contract: the decoder is returned as a callable, and it
+        # returns True when it imported the document.
+        decoder = super(AccountMove, self_ctx)._get_edi_decoder(ubl_file_data, new)
+        if not decoder:
+            return "No UBL decoder found for the generated XML"
+        if not decoder(move, ubl_file_data, new):
+            return "Odoo's UBL importer could not read the generated XML"
+        return None
 
     @api.model
     def _ai_post_process(self, invoice, extracted, usage, model_name, company):
@@ -750,10 +740,12 @@ class AccountMove(models.Model):
                     "document, so the currency was not read off the page — it "
                     "was deduced as %(currency)s. The vendor's address and ours "
                     "are both in %(country)s, whose currency is %(currency)s. "
-                    "%(source)s Check it against the PDF before posting.",
+                    "%(evidence)s Check it against the PDF before posting.",
                     currency=extracted.get("currency") or "",
                     country=country.display_name or inferred_from,
-                    source=source,
+                    # Not `source`: that is the name of `_()`'s own first
+                    # parameter in 18.0.
+                    evidence=source,
                 )
             )
 
@@ -784,8 +776,10 @@ class AccountMove(models.Model):
                 )
             )
 
-        # Post chatter message with token usage
-        invoice.message_post(
+        # Post chatter message with token usage. `no_new_invoice`: on 18.0 a
+        # message with attachments makes core try to decode them into the bill
+        # and post "already contains lines" when it cannot.
+        invoice.with_context(no_new_invoice=True).message_post(
             body=Markup(
                 "<p>Imported via AI invoice extraction</p>"
                 "<ul>"
@@ -802,14 +796,24 @@ class AccountMove(models.Model):
         # that catches extraction errors.
 
     @api.model
+    def _ai_routing_field(self):
+        """The bank-account field that holds a US routing number, or None.
+
+        Odoo 18.0 has no such field in ``base``; ``l10n_us`` adds
+        ``aba_routing``.
+        """
+        fields = self.env["res.partner.bank"]._fields
+        return "aba_routing" if "aba_routing" in fields else None
+
     @api.model
     def _ai_record_routing_number(self, invoice, extracted):
         """Store the US routing number on the bank account so it is payable.
 
         Core's UBL import reads the account number but not
-        ``FinancialInstitutionBranch/ID``, so it is written to
-        ``clearing_number`` here. An existing clearing number is never
-        overwritten.
+        ``FinancialInstitutionBranch/ID``, so it is written to the routing
+        field here (``aba_routing``, from ``l10n_us``). An existing routing
+        number is never overwritten. Without ``l10n_us`` there is nowhere to
+        store it, so it is stated on the bill instead of being dropped.
         """
         seller = (extracted or {}).get("seller") or {}
         routing = (seller.get("routing_number") or "").strip()
@@ -818,6 +822,30 @@ class AccountMove(models.Model):
 
         account_number = sanitize_account_number(payee_account_number(seller))
         if not account_number:
+            return
+
+        field = self._ai_routing_field()
+        # `l10n_us` accepts 1 to 9 digits and nothing else. The value is checked
+        # here rather than by catching the constraint: in 18.0 a write that fails
+        # validation has already put the value in the cache, and it would be
+        # flushed at commit anyway.
+        digits = re.sub(r"\D", "", routing)
+        storable = bool(re.fullmatch(r"\d{1,9}", digits))
+        if not field or not storable:
+            reason = (
+                _("no routing number field exists (install US accounting, l10n_us)")
+                if not field
+                else _("it is not a number of at most nine digits")
+            )
+            self._ai_post_once(
+                invoice,
+                _(
+                    "The routing number read from the document is %(routing)s. "
+                    "It is not saved on the bank account because %(reason)s.",
+                    routing=routing,
+                    reason=reason,
+                ),
+            )
             return
 
         # The account on the bill, plus any account of the vendor carrying this
@@ -834,23 +862,20 @@ class AccountMove(models.Model):
             )
 
         for bank in candidates:
-            if bank.sanitized_acc_number != account_number or bank.clearing_number:
+            if bank.sanitized_acc_number != account_number or bank[field]:
                 continue
-            try:
-                bank.clearing_number = routing
-            except ValidationError as e:
-                # `l10n_us` refuses a routing number that is not at most nine
-                # digits. Say so on the bill rather than failing the import —
-                # the bill is correct, only the payment detail is missing.
-                invoice.message_post(
-                    body=Markup("<p>%s</p>")
-                    % _(
-                        "The routing number read from the document (%(routing)s) "
-                        "could not be saved on the bank account: %(error)s",
-                        routing=routing,
-                        error=str(e),
-                    )
-                )
+            bank[field] = digits
+
+    @api.model
+    def _ai_post_once(self, invoice, text):
+        """Post ``text`` on ``invoice`` unless an identical note is already there.
+
+        For notes a re-import or an applied suggestion would otherwise repeat.
+        """
+        body = Markup("<p>%s</p>") % text
+        if any(str(body) == str(message.body) for message in invoice.message_ids):
+            return
+        invoice.message_post(body=body)
 
     def _ai_enforce_document_bank_side(self, invoice, extracted=None):
         """Keep ``partner_bank_id`` on the payee's side of the document.
@@ -1093,32 +1118,66 @@ class AccountMove(models.Model):
         if reason:
             raise UserError(Partner._ai_refused_vendor_message(refused, reason))
 
-        vendor = Partner.create(self._ai_vendor_vals_from_seller(seller))
+        vendor, refused_vat = self._ai_create_vendor(
+            self._ai_vendor_vals_from_seller(seller)
+        )
         self.partner_id = vendor
 
         # Posted here: a contact created from this document leaves nothing for
         # `_ai_apply_vendor_data` to fill, so its note would be skipped.
-        self.message_post(
-            body=Markup("<p><strong>%s</strong></p><p>%s</p>")
-            % (
-                _(
-                    "%(user)s created this contact from bill %(bill)s, using "
-                    "what was read off the document.",
-                    user=self.env.user.display_name,
-                    bill=self.display_name,
-                ),
-                _(
-                    "Nothing was invented: the name, address and tax id come "
-                    "from this invoice, and no bank account was written. Check "
-                    "them against the document before posting.",
-                ),
-            )
+        body = Markup("<p><strong>%s</strong></p><p>%s</p>") % (
+            _(
+                "%(user)s created this contact from bill %(bill)s, using "
+                "what was read off the document.",
+                user=self.env.user.display_name,
+                bill=self.display_name,
+            ),
+            _(
+                "Nothing was invented: the name, address and tax id come "
+                "from this invoice, and no bank account was written. Check "
+                "them against the document before posting.",
+            ),
         )
+        if refused_vat:
+            body += Markup("<p>%s</p>") % _(
+                "The tax id %(vat)s read off the document was not stored: "
+                "Odoo's VAT check does not accept it for this contact's "
+                "country. It is waiting in Vendor Data Suggestions; compare "
+                "it with the document before applying it.",
+                vat=refused_vat,
+            )
+        self.message_post(body=body)
 
         # Still run for the identifiers, so the next bill matches by itself.
         self._ai_apply_vendor_data(vendor, extracted)
         self.ai_vendor_candidate_ids.unlink()
         return True
+
+    def _ai_create_vendor(self, vals):
+        """Create the contact; drop a tax id that Odoo's VAT check refuses.
+
+        With ``base_vat`` installed, a number that is not a VAT number in
+        Odoo's eyes (a Canadian business number, a US EIN, a misread digit)
+        makes ``create`` raise, and the person pressing the button gets a
+        validation error instead of a contact. The rest of the document is
+        still good, so the contact is created without the tax id, which stays
+        on the bill as a suggestion. Returns ``(partner, refused_vat)``.
+        """
+        Partner = self.env["res.partner"]
+        vat = vals.get("vat")
+        if not vat:
+            return Partner.create(vals), False
+        try:
+            with self.env.cr.savepoint():
+                return Partner.create(vals), False
+        except ValidationError:
+            _logger.info(
+                "AI invoice import: tax id %r refused by the VAT check; "
+                "creating the contact without it.",
+                vat,
+            )
+        vals = {key: value for key, value in vals.items() if key != "vat"}
+        return Partner.create(vals), vat
 
     def _ai_vendor_vals_from_seller(self, seller):
         """Return ``res.partner`` values for a contact created from ``seller``.
@@ -1224,12 +1283,14 @@ class AccountMove(models.Model):
                 Markup("<li><strong>%s</strong>%s — %s, %s</li>")
                 % (
                     candidate["partner"].display_name,
-                    _(" (archived)") if candidate["archived"] else "",
+                    # `self.env._`, not `_()`: in a generator expression 18.0's
+                    # `_()` cannot find the language from the frame.
+                    self.env._(" (archived)") if candidate["archived"] else "",
                     candidate["reason"],
                     # No plural forms in `_()`, so two translatable strings.
-                    _("1 posted bill")
+                    self.env._("1 posted bill")
                     if candidate["bill_count"] == 1
-                    else _("%s posted bills", candidate["bill_count"]),
+                    else self.env._("%s posted bills", candidate["bill_count"]),
                 )
                 for candidate in candidates
             )
@@ -1644,7 +1705,11 @@ class AccountMove(models.Model):
                 ),
                 bullets(
                     (
-                        _("Phone") if kind == "phone" else _("Web domain"),
+                        # `self.env._`: `_()` cannot find the language in a
+                        # generator expression on 18.0.
+                        self.env._("Phone")
+                        if kind == "phone"
+                        else self.env._("Web domain"),
                         value,
                     )
                     for kind, value in summary["learned"]

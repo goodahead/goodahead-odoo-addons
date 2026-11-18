@@ -58,8 +58,9 @@ class ResPartner(models.Model):
     # ------------------------------------------------------------------
     # Parties that can never be the vendor on a bill, scoped to the bill's
     # company: (1) the company partner and its contacts, (2) any partner with
-    # a user, (3) a contact owned solely by another company. Another company's
-    # shared partner is allowed, which keeps intercompany billing working.
+    # an internal user, (3) a contact owned solely by another company. Another
+    # company's shared partner is allowed, which keeps intercompany billing
+    # working.
     # Rules 1 and 2 walk the ancestry upward only: walking down would refuse a
     # vendor because one of its contacts has a portal login.
     # ------------------------------------------------------------------
@@ -208,11 +209,15 @@ class ResPartner(models.Model):
         tree = self._ai_partner_ancestry(partner)
         if tree & self._ai_our_own_company_partners(company):
             return "own_company"
+        # Internal users only: a vendor with a portal login (purchase portal)
+        # is still a vendor.
         has_user = (
             self.env["res.users"]
             .sudo()
             .with_context(active_test=False)
-            .search_count([("partner_id", "in", tree.ids)], limit=1)
+            .search_count(
+                [("partner_id", "in", tree.ids), ("share", "=", False)], limit=1
+            )
         )
         if has_user:
             return "own_user"
@@ -301,8 +306,8 @@ class ResPartner(models.Model):
     def _ai_find_vendor(self, seller, company=None):
         """Find an existing vendor for the extracted seller; never create one.
 
-        Independent of the EDI pipeline, so it works on every 19.0 build.
-        Steps, strongest key first: VAT, business id + country, normalised
+        Independent of the EDI pipeline, so it works on either core import
+        pipeline. Steps, strongest key first: VAT, business id + country, normalised
         phone, email domain, website domain, exact name. A key that resolves
         to more than one commercial partner is not a match. VAT and name
         searches use this company's contacts first, then shared ones.
@@ -393,13 +398,13 @@ class ResPartner(models.Model):
 
     @api.model
     def _retrieve_partner_with_name(self, name, extra_domain):
-        """Give our keys a chance at the last slot of the older core's chain.
+        """Give our keys a chance at the last slot of core's chain.
 
-        Older 19.0 builds call this as the last step of ``_retrieve_partner``,
-        once company-scoped and once for shared partners, so our keys land
-        below core's exact keys and above its name match. On newer builds it
-        has no core callers and is inert. Only for AI decodes; a match is
-        returned only if it satisfies the caller's ``extra_domain``.
+        Core calls this as the last step of ``_retrieve_partner``, once
+        company-scoped and once for shared partners, so our keys land below
+        core's exact keys (VAT, Peppol pair, phone/email) and above its name
+        match. Only for AI decodes; a match is returned only if it satisfies
+        the caller's ``extra_domain``.
         """
         if self.env.context.get("ai_invoice_import"):
             seller = self._ai_seller_from_context()
@@ -415,10 +420,10 @@ class ResPartner(models.Model):
     def _ai_retrieve_partner_with_exact_name(self, name, extra_domain):
         """Core's name step with ``=ilike`` instead of ``ilike``.
 
-        Older builds match names as a substring and accept a single hit, so a
-        printed name contained in one partner's name decides the bill silently.
-        Newer builds use an exact case-insensitive match; this aligns the two.
-        Substring look-alikes are still offered as candidates on the bill.
+        Core matches names as a substring and accepts a single hit, so a
+        printed name contained in one partner's name would decide the bill
+        silently. AI decodes use an exact case-insensitive match instead;
+        substring look-alikes are still offered as candidates on the bill.
         ``limit=2`` and ``extra_domain`` stay as core's, since the caller
         accepts only a single result.
         """
@@ -474,10 +479,10 @@ class ResPartner(models.Model):
                 return partner
         return self.browse()
 
-    # `_retrieve_partner` is deliberately not overridden: newer builds do not
-    # call it during UBL import, and on older builds running after `super()`
-    # would let a name match win. The keys are hooked as search-plan steps
-    # below and through `_retrieve_partner_with_name` above.
+    # `_retrieve_partner` is deliberately not overridden: running after
+    # `super()` would let a name match win. The keys are hooked through
+    # `_retrieve_partner_with_name` above (and as search-plan steps below,
+    # which only a 19.0 core calls).
 
     @api.model
     def _import_retrieve_customer_from_ai_business_id(self, customer_values):

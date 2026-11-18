@@ -101,7 +101,7 @@ class TestUsShape(TransactionCase):
         )
 
     def test_us_bank_details_reach_the_ubl(self):
-        """Routing + account number occupy the slots an IBAN + BIC used to."""
+        """Routing + account number occupy the slots an IBAN + BIC would."""
         tree = self._tree(_us_extracted())
 
         account = tree.find(
@@ -207,13 +207,65 @@ class TestUsShape(TransactionCase):
     # The routing number must survive onto the bank account
     # ------------------------------------------------------------------
 
+    def _routing_field_or_skip(self):
+        field = self.AM._ai_routing_field()
+        if not field:
+            self.skipTest("no routing-number field on this database (l10n_us)")
+        return field
+
+    def test_without_a_routing_field_the_number_is_stated_on_the_bill(self):
+        """Without `l10n_us` there is nowhere to store it, so it is posted on
+        the bill rather than silently dropped."""
+        if self.AM._ai_routing_field():
+            self.skipTest("this database has a routing-number field")
+        vendor = self.env["res.partner"].create(
+            {"name": "ZZ No Routing Field Vendor", "is_company": True}
+        )
+        bank = self.env["res.partner.bank"].create(
+            {"acc_number": ACCOUNT, "partner_id": vendor.id}
+        )
+        invoice = self.AM.create({"move_type": "in_invoice", "partner_id": vendor.id})
+        invoice.partner_bank_id = bank
+
+        self.AM._ai_record_routing_number(invoice, _us_extracted())
+
+        bodies = " ".join(invoice.message_ids.mapped("body"))
+        self.assertIn(ROUTING, bodies)
+
+        # Applying the bank suggestion or re-importing runs this again; the
+        # note is not repeated.
+        count = len(invoice.message_ids)
+        self.AM._ai_record_routing_number(invoice, _us_extracted())
+        self.assertEqual(len(invoice.message_ids), count)
+
+    def test_a_formatted_routing_number_is_stored_as_digits(self):
+        """`l10n_us` accepts digits only; "021-000-021" passes the checksum, so
+        it must be stored as 021000021, not rejected (or half-written)."""
+        field = self._routing_field_or_skip()
+        vendor = self.env["res.partner"].create(
+            {"name": "ZZ Formatted Routing Vendor", "is_company": True}
+        )
+        bank = self.env["res.partner.bank"].create(
+            {"acc_number": ACCOUNT, "partner_id": vendor.id}
+        )
+        invoice = self.AM.create({"move_type": "in_invoice", "partner_id": vendor.id})
+        invoice.partner_bank_id = bank
+        extracted = _us_extracted()
+        extracted["seller"]["routing_number"] = "021-000-021"
+
+        self.AM._ai_record_routing_number(invoice, extracted)
+        bank.flush_recordset()
+
+        self.assertEqual(bank[field], ROUTING)
+
     def test_the_routing_number_lands_on_the_bank_account(self):
-        """The routing number is stored as the bank account's clearing number.
+        """The routing number is stored on the bank account.
 
         Core's UBL import never reads `FinancialInstitutionBranch/ID`, so
         without `_ai_record_routing_number` the vendor gets a bare account
         number that cannot be paid by ACH.
         """
+        field = self._routing_field_or_skip()
         vendor = self.env["res.partner"].create(
             {"name": "ZZ Routing Probe", "is_company": True}
         )
@@ -229,7 +281,7 @@ class TestUsShape(TransactionCase):
         self.AM._ai_record_routing_number(invoice, extracted)
 
         self.assertEqual(
-            bank.clearing_number,
+            bank[field],
             ROUTING,
             "the routing number was verified and then thrown away; the account "
             "cannot be paid",
@@ -238,13 +290,14 @@ class TestUsShape(TransactionCase):
     def test_the_routing_number_is_stamped_on_an_account_core_created(self):
         """The routing number is also stamped on an account core created for an
         existing vendor."""
+        field = self._routing_field_or_skip()
         vendor = self.env["res.partner"].create(
             {"name": "ZZ Existing Routing Vendor", "is_company": True}
         )
         bank = self.env["res.partner.bank"].create(
             {"acc_number": ACCOUNT, "partner_id": vendor.id}
         )
-        self.assertFalse(bank.clearing_number)
+        self.assertFalse(bank[field])
 
         invoice = self.AM.create(
             {"move_type": "in_invoice", "partner_id": vendor.id}
@@ -253,10 +306,11 @@ class TestUsShape(TransactionCase):
 
         self.AM._ai_record_routing_number(invoice, _us_extracted())
 
-        self.assertEqual(bank.clearing_number, ROUTING)
+        self.assertEqual(bank[field], ROUTING)
 
-    def test_an_existing_clearing_number_is_never_overwritten(self):
+    def test_an_existing_routing_number_is_never_overwritten(self):
         """A human may have corrected it; an extraction must not win."""
+        field = self._routing_field_or_skip()
         vendor = self.env["res.partner"].create(
             {"name": "ZZ Corrected Routing Vendor", "is_company": True}
         )
@@ -264,7 +318,7 @@ class TestUsShape(TransactionCase):
             {
                 "acc_number": ACCOUNT,
                 "partner_id": vendor.id,
-                "clearing_number": "111000025",
+                field: "111000025",
             }
         )
         invoice = self.AM.create(
@@ -274,7 +328,7 @@ class TestUsShape(TransactionCase):
 
         self.AM._ai_record_routing_number(invoice, _us_extracted())
 
-        self.assertEqual(bank.clearing_number, "111000025")
+        self.assertEqual(bank[field], "111000025")
 
     # ------------------------------------------------------------------
     # The checksums dispatch by shape, not by field name
@@ -642,11 +696,7 @@ class TestInboundLimits(TransactionCase):
         }
 
     def test_the_module_ships_no_alias(self):
-        """The module owns no `mail.alias`; aliases are created by hand.
-
-        Databases that had an alias from an earlier version keep it, with the
-        xmlid released by a migration.
-        """
+        """The module owns no `mail.alias`; aliases are created by hand."""
         self.assertFalse(
             self.env["ir.model.data"].search_count(
                 [

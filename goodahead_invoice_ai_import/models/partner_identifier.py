@@ -222,12 +222,13 @@ class GoodaheadPartnerIdentifier(models.Model):
     )
     active = fields.Boolean(default=True)
 
-    # `models.Constraint`, not `_sql_constraints`: in 19.0 the old attribute
-    # only logs a warning and the index is never created.
-    _partner_kind_value_uniq = models.Constraint(
-        "UNIQUE(partner_id, kind, value)",
-        "This partner already carries that identifier.",
-    )
+    _sql_constraints = [
+        (
+            "partner_kind_value_uniq",
+            "UNIQUE(partner_id, kind, value)",
+            "This partner already carries that identifier.",
+        ),
+    ]
 
     @api.model
     def _normalise_phone(self, value):
@@ -309,7 +310,7 @@ class GoodaheadPartnerIdentifier(models.Model):
         )
 
     @api.model
-    @ormcache(cache="stable")
+    @ormcache()
     def _non_identifying_domains(self):
         """Every host that identifies nobody: the shipped floors, plus the
         operator's additions, minus explicit subtractions.
@@ -318,8 +319,8 @@ class GoodaheadPartnerIdentifier(models.Model):
         than a parameter seeded from the constants: clearing the parameter
         cannot empty the list, and newly shipped domains reach existing
         databases on upgrade. The list is system-wide because the identifier
-        table is not company-scoped. Cached under ``stable``, which
-        ``ir.config_parameter`` clears on every change.
+        table is not company-scoped. Cached in the default registry cache,
+        which ``ir.config_parameter`` clears on every change.
         """
         setting = (
             self.env["ir.config_parameter"]
@@ -331,7 +332,7 @@ class GoodaheadPartnerIdentifier(models.Model):
         return frozenset(floor | added) - removed
 
     @api.model
-    @ormcache(cache="stable")
+    @ormcache()
     def _non_identifying_suffixes(self):
         """The shipped suffixes, minus whatever the operator subtracted.
 
@@ -579,7 +580,6 @@ class GoodaheadPartnerIdentifier(models.Model):
                 rows.append((partner_id, kind, value, source))
 
         uid = self.env.uid
-        written = 0
         for start in range(0, len(rows), batch_size):
             batch = [
                 (partner_id, kind, value, source, True, uid, uid)

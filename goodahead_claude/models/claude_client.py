@@ -53,8 +53,9 @@ class ClaudeClient(models.AbstractModel):
 
         Prefers non-small-tier models, then the most recently released, then dated rows over
         undated ones; if every model is small-tier, the newest of those. Archived models are
-        excluded by `active_test`. `requires_pdf` restricts to PDF-capable models, but degrades
-        with a warning when none reports PDF support (more likely missing capability data).
+        excluded by `active_test`. `requires_pdf` restricts to PDF-capable models, but falls
+        back with a warning when none reports PDF support, since that more likely means the
+        capability data is missing.
 
         Each preference is a separate search on purpose: PostgreSQL sorts NULLs first under
         DESC, so relying on `_order` would make an undated row the default.
@@ -90,8 +91,8 @@ class ClaudeClient(models.AbstractModel):
 
         default = company.claude_default_model_id
         if default and not default.active:
-            # Raise rather than send an id the API will reject or silently substitute
-            # a different model than the company chose.
+            # Raise rather than send an id the API may reject, or silently fall back to
+            # a model the company did not choose.
             raise UserError(_(
                 "Company %(company)s is configured to use the Claude model "
                 "\"%(model)s\" (%(api_id)s), which the Anthropic models API no longer "

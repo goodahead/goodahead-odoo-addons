@@ -113,10 +113,13 @@ class InvoicePromptProfile(models.Model):
         "categories left as a placeholder.",
     )
 
-    _code_uniq = models.Constraint(
-        "UNIQUE(code)",
-        "Only one profile can be built from each shipped locale block.",
-    )
+    _sql_constraints = [
+        (
+            "code_uniq",
+            "UNIQUE(code)",
+            "Only one profile can be built from each shipped locale block.",
+        ),
+    ]
 
     @api.depends("builtin", "code", *SLOT_NAMES)
     def _compute_prompt_preview(self):

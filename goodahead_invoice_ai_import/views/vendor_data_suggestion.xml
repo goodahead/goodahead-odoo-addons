@@ -69,7 +69,7 @@
                 <separator/>
                 <filter name="sensitive" string="Bank or tax id"
                         domain="[('is_sensitive', '=', True)]"/>
-                <!-- No `expand`/`string` on the group: 19.0's RNG rejects them. -->
+                <!-- No `expand`/`string` on the group, so the arch also validates on Odoo 19.0. -->
                 <group>
                     <filter name="group_by_partner" string="Vendor"
                             context="{'group_by': 'partner_id'}"/>

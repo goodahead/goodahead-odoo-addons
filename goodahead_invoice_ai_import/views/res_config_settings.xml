@@ -24,7 +24,7 @@
                             </div>
                             <div class="mt16 text-muted">
                                 The API key and the model list live under
-                                <b>Settings &gt; Claude</b>. Run
+                                <b>General Settings &gt; Claude Connection</b>. Run
                                 <b>Sync Models</b> there before the first import,
                                 or no model will resolve.
                             </div>

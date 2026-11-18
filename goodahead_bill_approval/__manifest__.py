@@ -3,8 +3,8 @@
 {
     'name': 'Bills and Credit Notes: Two-Step Approval',
     'summary': 'A vendor bill or customer credit note is reviewed, then approved, before it '
-               'can be posted. Two per-user approval levels, granted as checkboxes on the '
-               'user form, with an optional chosen approver and substitute.',
+               'can be posted. Two per-user approval levels, granted on the user form under '
+               'Accounting, with an optional chosen approver and substitute.',
     'description': """
 Two-step approval for vendor bills
 ==================================
@@ -43,7 +43,7 @@ they, or the substitute set in their preferences, may then approve it; the form 
 by ... on behalf of ..." when the substitute did. The chosen approver gets an activity while the
 document waits, and the *My Approvals* filter lists it.
 """,
-    'version': '19.0.1.5.0',
+    'version': '18.0.1.5.0',
     'category': 'Accounting/Accounting',
     'author': 'Goodahead Oy',
     'website': 'https://www.goodahead.com/',

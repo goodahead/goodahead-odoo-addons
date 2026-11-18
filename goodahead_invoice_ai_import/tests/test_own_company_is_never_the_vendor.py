@@ -42,7 +42,7 @@ UNKNOWN_VAT = "DE811569869"
 TRAP_NAME = "ZZ Own Company Trap OU"
 
 #: A valid Belgian IBAN (the canonical documentation example).
-TRAP_IBAN = "BE68 5390 0754 7034"
+TRAP_IBAN = "BE20 0631 3579 2456"
 
 #: A second valid IBAN, for the genuine-vendor control.
 OTHER_IBAN = "BE71 0961 2345 6769"
@@ -165,7 +165,7 @@ class _OwnCompanyTrapHarness(TransactionCase):
             "phone": TRAP_PHONE,
             "email": None,
             "vat": UNKNOWN_VAT,
-            "postal_address": {"country_code": "DE", "city": "Berlin"},
+            "country_code": "DE", "city": "Berlin",
         }
         vals.update(overrides)
         edi = (
@@ -450,6 +450,23 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
             "own_user",
         )
 
+    def test_a_vendor_with_a_portal_login_is_still_accepted(self):
+        """A portal login (e.g. the purchase portal) does not make a vendor one
+        of our own users; only internal users are refused."""
+        vendor = self._genuine_vendor()
+        self.env["res.users"].create(
+            {
+                "name": vendor.name,
+                "login": "zz-ownco-vendor-portal",
+                "partner_id": vendor.id,
+                "groups_id": [(6, 0, [self.env.ref("base.group_portal").id])],
+            }
+        )
+
+        self.assertFalse(
+            self.Partner._ai_impossible_vendor_reason(vendor, company=self.company)
+        )
+
     def test_a_vendor_whose_child_contact_has_a_user_is_still_accepted(self):
         """A login on a vendor's child contact does not refuse the vendor: the
         ancestry walk only goes upward."""
@@ -584,6 +601,8 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
         seller["business_id"] = "ZZ-OWNCO-REG-1"
         seller["country_code"] = "FI"
+        # `company_registry` is a commercial field, so the company partner's
+        # child contacts carry it too; compare commercial partners.
         self.assertEqual(
             self.Partner.search(
                 self.Partner._ai_vendor_registry_domain("ZZ-OWNCO-REG-1", "FI")
@@ -683,8 +702,8 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
     def test_control_an_eligible_vendor_inside_the_window_costs_the_same_searches(self):
         """Control: the answer and the number of searches are unchanged.
 
-        One fetch per ownership pass, whether or not the window is full, so the
-        fix is a domain term and not a paging loop.
+        One fetch per ownership pass, whether or not the window is full: refused
+        rows are excluded by a domain term, not by a paging loop.
         """
         registry = "ZZ-NARROW-REG-1"
         country = self.env.ref("base.de")

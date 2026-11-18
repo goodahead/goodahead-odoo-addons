@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Group checkboxes are otherwise only rendered in developer mode ("Extra Rights"),
-         so they are added to the Access Rights page directly. -->
+    <!-- The two levels themselves are core's generated access-rights fields (see
+         security/res_groups.xml). Only the substitute is added here; its visibility follows
+         the step 2 level live, because `bill_approval_may_approve` is computed from
+         `groups_id`, which core's onchange rebuilds from the level fields. -->
     <record id="view_users_form_bill_approval" model="ir.ui.view">
         <field name="name">res.users.form.bill.approval</field>
         <field name="model">res.users</field>
         <field name="inherit_id" ref="base.view_users_form"/>
         <field name="arch" type="xml">
             <xpath expr="//page[@name='access_rights']" position="inside">
-                <group string="Vendor Bill Approval" invisible="share">
-                    <field name="bill_approval_may_review"/>
-                    <field name="bill_approval_may_approve"/>
+                <group string="Vendor Bill Approval" invisible="share or not bill_approval_may_approve">
+                    <field name="bill_approval_may_approve" invisible="1" readonly="1"/>
                     <!-- A substitute is only relevant for step 2 approvers. -->
                     <field name="bill_approval_substitute_id"
                            invisible="not bill_approval_may_approve"
@@ -28,13 +29,15 @@
         <field name="model">res.users</field>
         <field name="inherit_id" ref="base.view_users_form_simple_modif"/>
         <field name="arch" type="xml">
-            <xpath expr="//group[@name='other_preferences']" position="inside">
-                <field name="bill_approval_may_approve" invisible="1"/>
-                <field name="bill_approval_substitute_id"
-                       class="o_bill_approval_substitute_pref"
-                       readonly="0"
-                       options="{'no_create': True}"
-                       invisible="not bill_approval_may_approve"/>
+            <xpath expr="//page[@name='preferences_page']/group[@name='signature']" position="before">
+                <group name="bill_approval_preferences" invisible="not bill_approval_may_approve">
+                    <field name="bill_approval_may_approve" invisible="1"/>
+                    <field name="bill_approval_substitute_id"
+                           class="o_bill_approval_substitute_pref"
+                           readonly="0"
+                           options="{'no_create': True}"
+                           invisible="not bill_approval_may_approve"/>
+                </group>
             </xpath>
         </field>
     </record>

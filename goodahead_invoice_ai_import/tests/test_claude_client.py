@@ -109,8 +109,8 @@ class TestClaudeClient(BaseCase):
     # ------------------------------------------------------------------
     # The prompt itself
     #
-    # These tests assert on prompt text: an instruction is present, reaches
-    # the API call and has not been reverted. They say nothing about how the
+    # These tests assert on prompt text: an instruction is present and reaches
+    # the API call. They say nothing about how the
     # model actually reads an invoice; that needs real documents and real
     # calls.
     # ------------------------------------------------------------------

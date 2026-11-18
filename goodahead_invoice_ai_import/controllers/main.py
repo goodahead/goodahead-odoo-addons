@@ -8,7 +8,7 @@ class FailedImportsController(http.Controller):
 
     @http.route(
         "/goodahead_invoice_ai_import/failed_imports",
-        type="jsonrpc",
+        type="json",
         auth="user",
         readonly=True,
     )

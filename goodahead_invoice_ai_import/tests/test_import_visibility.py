@@ -42,7 +42,7 @@ class TestImportVisibility(TransactionCase):
         self.assertTrue(self.AiImport._ai_user_works_imports(self.bookkeeper))
 
     def test_administrator_is_told_without_bookkeeper(self):
-        """In 19.0 core Administrator does not imply Bookkeeper."""
+        """In core, the accounting Administrator group does not imply Bookkeeper."""
         self.assertTrue(self.AiImport._ai_user_works_imports(self.administrator))
 
     def test_invoicing_user_can_still_read_imports(self):
@@ -63,7 +63,7 @@ class TestImportVisibility(TransactionCase):
             "goodahead_invoice_ai_import.menu_vendor_data_suggestion",
         ):
             with self.subTest(menu=xmlid):
-                self.assertEqual(set(self.env.ref(xmlid).group_ids), expected)
+                self.assertEqual(set(self.env.ref(xmlid).groups_id), expected)
 
     def test_invoicing_user_does_not_see_the_menus(self):
         visible = (

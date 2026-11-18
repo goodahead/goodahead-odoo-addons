@@ -4,7 +4,9 @@
 """Vendor de-duplication: match an existing vendor by VAT or business id.
 
 The business id (company_registry) is scoped by country and independent of the VAT.
-The tests drive the search-plan step the core actually uses during a UBL import.
+The step tests call the module's search-plan step directly; only newer 19.0 cores
+call it during an import. On Odoo 18.0 (the legacy pipeline) the business id is
+matched at core's name slot instead, which the real-decode test covers.
 Fake `ZZ-…` identifiers avoid matching existing partners.
 """
 
@@ -168,7 +170,7 @@ class TestVendorMatching(TransactionCase):
                 )
 
     def test_decoder_matches_the_vendor_by_business_id(self):
-        """The business-id step runs inside a real decode.
+        """Business-id matching runs inside a real decode, on either pipeline.
 
         Name and VAT match nothing, so only the business id can resolve the vendor.
         Asserted before `_ai_post_process`, which has its own business-id matching.
@@ -311,7 +313,7 @@ class TestVendorMatching(TransactionCase):
     def test_unmatched_vendor_is_not_created(self):
         """An unrecognised vendor leaves the bill without a partner; none is created.
 
-        Creating one tended to duplicate an existing vendor stored under another name.
+        Creating one would often duplicate an existing vendor stored under another name.
         """
         Partner = self.Partner.with_context(active_test=False)
         before = Partner.search_count([])

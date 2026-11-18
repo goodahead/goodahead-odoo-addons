@@ -72,7 +72,7 @@ class TestPaymentRefundCreditNotes(BillApprovalCommon):
         payment_group = self.env.ref(
             'account_voucher_killer.invoice_payment_user', raise_if_not_found=False)
         if payment_group:
-            user.group_ids = [Command.link(payment_group.id)]
+            user.groups_id = [Command.link(payment_group.id)]
         self.credit_note.with_user(user).write(
             {'transaction_ids': [Command.link(self.refund.id)]})
         self.assertIn(self.refund, self.credit_note.transaction_ids)

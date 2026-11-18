@@ -71,7 +71,7 @@ class TestCustomerCreditNotes(BillApprovalCommon):
         task = refund.activity_ids.filtered(
             lambda a: a.activity_type_id == self.env.ref(
                 'goodahead_bill_approval.mail_activity_type_bill_to_post'))
-        self.assertTrue(task, "the book keeper is told to post it, as for a bill")
+        self.assertTrue(task, "the bookkeeper is told to post it, as for a bill")
         self.assertIn('credit note', task.summary)
         self.assertIn('Credit Notes to Post', task.note)
 

@@ -20,16 +20,24 @@ export class BillApprovalMenu extends Component {
 
     setup() {
         this.action = useService("action");
+        this.orm = useService("orm");
         this.dropdown = useDropdownState();
-        // Stays null until the lazy session answers, and for users holding neither level.
+        // Stays null until the server answers, and for users holding neither level.
         this.state = useState({ data: null });
-        this.lazySession = useService("lazy_session");
         onWillStart(() => {
-            // Do not await: `lazy_session` resolves only after WEB_CLIENT_READY, so awaiting
-            // here would block the navbar render.
-            this.lazySession.getValue("goodahead_bill_approval", (data) => {
-                this.state.data = data || null;
-            });
+            // Do not await: the counts are not needed to draw the navbar, so the request
+            // must not hold up its render.
+            // `silent` keeps the loading indicator out of it. The catch handles the rejection,
+            // so a failing count never raises an error dialog on every page load; the menu
+            // then simply stays hidden.
+            this.orm
+                .silent.call("account.move", "bill_approval_systray_data", [])
+                .then((data) => {
+                    this.state.data = data && data.rows ? data : null;
+                })
+                .catch(() => {
+                    this.state.data = null;
+                });
         });
     }
 

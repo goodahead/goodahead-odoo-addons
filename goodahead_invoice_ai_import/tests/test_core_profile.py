@@ -3,10 +3,11 @@
 
 """Detection of which core import pipeline this module is running on.
 
-Two Odoo 19.0 builds import vendor bills through different pipelines, and this
-module hooks both. A plain `hasattr` check is useless because this module
-itself defines the methods being probed, and some core methods exist on both
-builds but are dead stubs on one.
+Odoo has two UBL vendor-bill import pipelines: `legacy` (Odoo 18.0 and early
+19.0 builds) and `search_plan` (newer 19.0 builds). The model code carries hooks
+for both; on 18.0 only `legacy` is ever detected. A plain `hasattr` check is
+useless because this module itself defines the methods being probed, and some
+core methods exist on both pipelines but are dead stubs on one.
 
 Two things are tested:
 
@@ -53,16 +54,16 @@ SEARCH_PLAN_CORE = {
     # It also has every name the legacy profile checks, so a profile built
     # only from "is this name present" would match `legacy` too.
     ("account.edi.common", "_import_partner"),
-    ("account.edi.common", "_import_lines"),
+    ("account.edi.common", "_import_invoice_lines"),
     ("account.edi.common", "_import_product"),
     ("res.partner", "_retrieve_partner"),
     ("res.partner", "_retrieve_partner_with_name"),
 }
 
-# Older 19.0 build (legacy pipeline).
+# Odoo 18.0 and early 19.0 builds (legacy pipeline).
 LEGACY_CORE = {
     ("account.edi.common", "_import_partner"),
-    ("account.edi.common", "_import_lines"),
+    ("account.edi.common", "_import_invoice_lines"),
     ("account.edi.common", "_import_product"),
     ("res.partner", "_retrieve_partner"),
     ("res.partner", "_retrieve_partner_with_name"),
@@ -370,9 +371,9 @@ class TestCoreProfileOnThisBuild(TransactionCase):
     def test_a_recognised_core_logs_the_profile_it_chose(self):
         """A recognised core logs the chosen profile at INFO.
 
-        Use `logging.INFO`, not the string "INFO": some 19.0 builds rebind the
-        name "INFO" to level 25 (RUNBOT), so `assertLogs(..., "INFO")` would
-        filter out real INFO records there.
+        Use `logging.INFO`, not the string "INFO": Odoo registers level 25
+        (RUNBOT) under the name "INFO", so `assertLogs(..., "INFO")` could
+        filter out real INFO records.
         """
         with self.assertLogs(
             "odoo.addons.goodahead_invoice_ai_import.models.core_profile",

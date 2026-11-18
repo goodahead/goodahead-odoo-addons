@@ -40,7 +40,7 @@
                 <separator/>
                 <filter name="inactive" string="Archived"
                         domain="[('active', '=', False)]"/>
-                <!-- No `expand`/`string` on the group: 19.0's RNG rejects them. -->
+                <!-- No `expand`/`string` on the group, so the arch also validates on Odoo 19.0. -->
                 <group>
                     <filter name="group_partner" string="Partner" domain="[]"
                             context="{'group_by': 'partner_id'}"/>

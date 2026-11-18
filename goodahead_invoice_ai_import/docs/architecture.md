@@ -44,7 +44,7 @@ the `root.ai_import` queue_job channel.
 3. Calls `_finalize_import`, shared with **Re-import from JSON**:
    - stores the extraction JSON, model name, token counts and the XML attachment;
    - creates a fresh draft move and attaches the vendor's PDF as its main attachment
-     before decoding, so core does not render a substitute PDF;
+     before decoding, so the vendor's PDF is the bill's preview;
    - runs `account.move._ai_decode_ubl_into_move`, which calls the native UBL decoder
      directly on the move;
    - links the move, then runs `_ai_post_process` under a savepoint.
@@ -99,27 +99,46 @@ monetary totals and lines (vendor product code as `SellersItemIdentification`).
 
 ## Odoo core pipelines
 
-Odoo 19.0 has two vendor-bill import pipelines, depending on the build:
+Odoo 18.0 imports every UBL vendor bill through `account.edi.common`
+(`_import_fill_invoice` → `_import_partner`, `_import_partner_bank`,
+`_import_invoice_lines` → `_import_product` → `product.product._retrieve_product`). The
+module calls this the **legacy** pipeline; newer 19.0 builds replaced it with a
+**search-plan** pipeline (`account.edi.ubl._ubl_import_invoice`), which only the 19.0
+branch of this module supports.
 
-- **search plan** (newer builds): `account.edi.ubl._ubl_import_invoice` with ordered
-  partner and product search plans.
-- **legacy** (older 19.0 builds): `account.edi.common._import_partner` →
-  `res.partner._retrieve_partner`, and `_retrieve_product` for products.
-
-An override of a method that a build never calls is a silent no-op, so
-`models/core_profile.py` detects the pipeline at registry load
+An override of a method a build never calls is a silent no-op, so
+`models/core_profile.py` checks the pipeline at registry load
 (`goodahead_invoice_ai_import.core_profile`) and imports are refused with a clear error
-on an unrecognised core.
+on an unrecognised core. `models/account_edi_ubl.py` holds the search-plan hooks; on
+18.0 nothing calls them, and the tests gated on that profile are skipped.
 
-| Concern | search plan | legacy |
-|---|---|---|
-| Vendor keys (business id, phone, domain) | extra steps in `_import_ubl_retrieve_customer_search_plan` | `res.partner._retrieve_partner_with_name` |
-| No automatic vendor creation | `_import_ubl_create_missing_customer` suppressed for AI imports | `account.edi.common._import_partner` guarded for AI imports |
-| Vendor product codes | plan narrowed so an unknown vendor code does not fall through to the internal reference | `product.product._get_product_domain_search_order` |
-| Bank account on the payee side | `_import_ubl_retrieve_partner_bank` | `_import_partner_bank` |
+| Concern | Hook on 18.0 |
+|---|---|
+| Vendor keys (business id, phone, domain) | `res.partner._retrieve_partner_with_name` |
+| No automatic vendor creation | `account.edi.common._import_partner` guarded for AI imports |
+| Vendor product codes | `account.edi.common._import_invoice_lines` puts the vendor on the context; `product.product._retrieve_product` then matches supplierinfo (that vendor, same row) and barcode only |
+| Bank account on the payee side | `account.edi.common._import_partner_bank` |
 
-The matching rules themselves live once, on `res.partner`, so both pipelines and the
+The matching rules themselves live once, on `res.partner`, so the decoder hooks and the
 post-decode fallback use the same code.
+
+### Odoo 18.0 differences from the 19.0 branch
+
+- The UBL decoder is returned as a callable by `_get_edi_decoder` and returns `True` when
+  it imported the document (19.0 returns a dict and `None`).
+- There is no `res.partner.bank.clearing_number`: a US routing number is stored in
+  `aba_routing` when `l10n_us` is installed, and otherwise stated on the bill.
+- The Peppol endpoint sanitizer is defined in `lib/ubl_generator.py`, since 18.0 core has
+  none.
+- JSON routes are `type="json"`; ormcache uses the default registry cache.
+- With Enterprise OCR (`account_invoice_extract`), AI-imported bills keep
+  `extract_state = no_extract_requested`; the module never sends them to OCR, but a
+  customisation that later registers a new main attachment on such a bill could.
+- The `migrations/19.0.*` folders come from the 19.0 branch. Odoo 18.0 never runs
+  them, because their versions are above this module's; they run once when the
+  database is upgraded to Odoo 19.0 with the 19.0 branch. They are written to be
+  idempotent; test that upgrade on a copy first. `migrations/0.0.0` runs on every
+  upgrade.
 
 ## Vendor matching (`models/res_partner.py`)
 
@@ -136,7 +155,9 @@ first: VAT, business id + country, phone, email domain, website domain, exact na
   [nordic-mx-evidence.md](nordic-mx-evidence.md) for how the Nordic entries were sourced.
 - The bill's own company partner and its contacts, partners linked to a user, and
   contacts belonging solely to another company are refused. Another company of the same
-  database can still be a vendor.
+  database can still be a vendor. The check on core's own match
+  (`_ai_impossible_vendor_reason`) refuses internal users only, so a vendor with a
+  portal login that core matches is kept.
 
 Identifier inserts tolerate concurrent imports: a row stored by another transaction
 first is skipped instead of failing the import.
@@ -158,7 +179,8 @@ first is skipped instead of failing the import.
    mapping falls back to the journal default with a chatter warning.
 4. **Bank details.** The bank account on the bill must belong to the payee. IBANs
    (mod-97) and US routing numbers (ABA checksum) that fail validation are dropped and
-   reported; the US routing number is recorded on the vendor's account.
+   reported. A US routing number is recorded on the vendor's account when `l10n_us`
+   is installed, and otherwise stated on the bill.
 5. **Notes and totals.** Currency-deduction and remit-to notes are posted; the printed
    total and tax are stored (`ai_document_total`, `ai_document_tax`) for the red mismatch
    banner; the extraction JSON is attached with model and token usage.
@@ -179,8 +201,9 @@ other.
 | `models/account_move.py` | decode, post-processing, banners, vendor UI |
 | `models/res_partner.py` | vendor matcher and refusal rules |
 | `models/partner_identifier.py` | phone/domain identifiers, public domain list |
-| `models/account_edi_ubl.py`, `models/account_edi_common.py`, `models/product_product.py` | hooks into the two core pipelines |
-| `models/core_profile.py` | core pipeline detection, substitute-PDF policy |
+| `models/account_edi_common.py`, `models/product_product.py` | hooks into 18.0's UBL import |
+| `models/account_edi_ubl.py` | search-plan hooks; not called on 18.0 |
+| `models/core_profile.py` | core pipeline detection; substitute-PDF switch, set only on a core that reads it |
 | `models/prompt_profile.py` | extraction prompt profiles |
 | `models/vendor_candidate.py`, `models/vendor_data_suggestion.py`, `wizard/vendor_data_review.py` | candidate cards, suggestions queue, review dialog |
 | `controllers/main.py`, `static/src/components/failed_imports_menu/` | systray bubble for failed imports |

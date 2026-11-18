@@ -16,22 +16,19 @@ from lxml import etree
 
 from odoo.tests import TransactionCase, tagged
 
+from odoo.addons.account_edi_ubl_cii.models.account_edi_common import EAS_MAPPING
+from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+    generate_peppol_invoice_xml,
+    peppol_endpoint_for_party,
+    peppol_endpoint_is_valid,
+    sanitize_peppol_endpoint,
+    vat_peppol_eas_codes,
+)
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
 )
 
 from .profiles import skip_method_unless_profile
-
-from odoo.addons.account_edi_ubl_cii.models.account_edi_common import EAS_MAPPING
-from odoo.addons.account_edi_ubl_cii.models.res_partner import (
-    sanitize_peppol_endpoint,
-)
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
-    generate_peppol_invoice_xml,
-    peppol_endpoint_for_party,
-    peppol_endpoint_is_valid,
-    vat_peppol_eas_codes,
-)
 
 NS = {
     "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
@@ -331,7 +328,7 @@ class TestFinnishInvoiceImports(TransactionCase):
     """Finnish invoices end to end through the real decoder, mocking only the Claude call.
 
     The vendor must not exist beforehand: core writes `peppol_eas` /
-    `peppol_endpoint` only into `partner_create_values`, so reusing a partner would
+    `peppol_endpoint` only when it creates a partner, so reusing a partner would
     bypass the endpoint check.
     """
 
@@ -473,7 +470,9 @@ class TestFinnishInvoiceImports(TransactionCase):
         """Control: a German vendor's `9930` pair reaches the XML and core matches on it.
 
         The vendor exists with that pair and an unrelated name, so only core's
-        `_import_retrieve_customer_from_eas_endpoint` step can find it.
+        Peppol lookup can find it (the Peppol domain in
+        `account.edi.common._import_partner` on Odoo 18.0,
+        `_import_retrieve_customer_from_eas_endpoint` on the search-plan core).
         """
         extracted = _finnish_invoice()
         extracted["invoice_number"] = "DE-2026-0001"

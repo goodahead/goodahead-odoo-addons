@@ -97,7 +97,7 @@ class TestLevels(BillApprovalCommon):
         self.assertEqual(bill.approval_1_uid, self.user_reviewer)
         self.assertEqual(bill.approval_1_date, first)
 
-    def test_the_checkbox_mirrors_the_group(self):
+    def test_the_mirror_field_follows_the_group(self):
         self.assertTrue(self.user_reviewer.bill_approval_may_review)
         self.assertFalse(self.user_reviewer.bill_approval_may_approve)
         self.assertFalse(self.user_director.bill_approval_may_review)
@@ -105,13 +105,13 @@ class TestLevels(BillApprovalCommon):
         self.assertFalse(self.user_none.bill_approval_may_review)
         self.assertFalse(self.user_none.bill_approval_may_approve)
 
-    def test_ticking_the_checkbox_grants_the_group(self):
+    def test_setting_the_mirror_field_grants_the_group(self):
         self.user_none.bill_approval_may_review = True
         self.assertTrue(self.user_none._has_group(GROUP_1))
         self.user_none.bill_approval_may_approve = True
         self.assertTrue(self.user_none._has_group(GROUP_2))
 
-    def test_unticking_the_checkbox_removes_the_group(self):
+    def test_clearing_the_mirror_field_removes_the_group(self):
         self.user_both.bill_approval_may_review = False
         self.assertFalse(self.user_both._has_group(GROUP_1))
         self.assertTrue(
@@ -120,7 +120,7 @@ class TestLevels(BillApprovalCommon):
         )
 
     def test_writing_a_set_of_users_at_once_and_then_one_of_them(self):
-        """Writing the checkbox on several users does not affect other members."""
+        """Writing the mirror field on several users does not affect other members."""
         users = self.user_reviewer + self.user_none
         users.write({'bill_approval_may_review': True})
         self.assertTrue(self.user_none._has_group(GROUP_1))
@@ -132,21 +132,14 @@ class TestLevels(BillApprovalCommon):
             "clearing one user must not clear the other",
         )
 
-    def test_the_checkbox_is_on_the_access_rights_page_outside_developer_mode(self):
-        """The checkboxes are in the user form arch, since core shows privilege-less
-        groups only in developer mode."""
-        arch = self.env['res.users'].get_view(
-            self.env.ref('base.view_users_form').id, 'form')['arch']
-        self.assertIn('bill_approval_may_review', arch)
-        self.assertIn('bill_approval_may_approve', arch)
-
-    def test_neither_group_has_a_privilege(self):
-        """The groups have no `privilege_id`, which would render them as a dropdown."""
-        for xmlid in (GROUP_1, GROUP_2):
-            self.assertFalse(
-                self.env.ref(xmlid).privilege_id,
-                "%s must have no privilege, or it renders as a dropdown" % xmlid,
-            )
+    def test_the_groups_have_categories_of_their_own(self):
+        """Each level has its own category: on 18.0 that is what puts it on the user form
+        outside developer mode (see `test_user_form.py`)."""
+        group_1 = self.env.ref(GROUP_1)
+        group_2 = self.env.ref(GROUP_2)
+        self.assertTrue(group_1.category_id)
+        self.assertTrue(group_2.category_id)
+        self.assertNotEqual(group_1.category_id, group_2.category_id)
 
     def test_neither_group_implies_the_other(self):
         group_1 = self.env.ref(GROUP_1)

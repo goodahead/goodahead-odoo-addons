@@ -14,8 +14,9 @@ The module ships no `mail.alias`. A module-created alias would sit beside the on
 you choose as a second live inbound address, and every PDF that reaches it costs a
 Claude call.
 
-Create it under **Settings > Technical > Email > Aliases** (or from the Alias field
-on the purchase journal):
+Create it under **Settings > Technical > Email > Aliases**. Not from the Alias field
+on the purchase journal: that alias points at vendor bills and uses Odoo's native
+importer (see below).
 
 | Field | Value |
 |---|---|
@@ -38,12 +39,12 @@ the scheduler user's company for every message.
 
 A bill imported into the wrong company does not fail: that company's accounts and
 the shared expense categories resolve and the bill can be posted. An alias without
-`company_id` still works and falls back to the alias user's company, but every
-emailed import posts a note naming the company it was filed under and whether that
-came from the alias or from the fallback.
+`company_id` still works and falls back to the company of the user processing the
+mail. Either way, the first import of each email gets a chatter note naming the
+company it was filed under and whether that came from the alias or from the fallback.
 
-Core's own `vendor-bills@` journal alias, if present, keeps using Odoo's native
-importer; mail sent there does not go through AI extraction.
+A purchase journal's own alias (core's `vendor-bills@`, if present) keeps using
+Odoo's native importer; mail sent there does not go through AI extraction.
 
 ### Contact security
 
@@ -51,23 +52,25 @@ importer; mail sent there does not go through AI extraction.
 authentication. Every accepted message can trigger a paid extraction. The module's
 own limits (below) are what bound the cost.
 
-Check that the alias domain (`mail.catchall.domain`) is correct before giving the
-address to vendors; mail sent to a wrong domain is not bounced to anyone who will
-notice.
+Check that the company's email domain (Settings > General Settings > Emails > Alias
+Domain, a `mail.alias.domain` record) is correct before giving the address to
+vendors; mail sent to a wrong domain is not bounced to anyone who will notice.
 
 ---
 
 ## 2. Claude API key and model
 
 The API key lives on the company (`res.company.claude_api_key`, Settings group) and
-is managed by `goodahead_claude` under **Settings > Claude**.
+is managed by `goodahead_claude` under **Settings > General Settings > Claude
+Connection**.
 
 1. Run **Sync Models** once before the first import, so the model registry has
    current models and release dates.
 2. Set **Settings > Accounting > AI Invoice Import > Extraction Model** to a capable,
    PDF-enabled model. The dropdown lists only PDF-capable models. If left empty, the
-   resolver picks the most recently released model, which may be a small tier that
-   is less suited to reading invoices.
+   company's **Default Model** under Claude Connection is used; if that is empty too,
+   the most recently released PDF-capable model, which may be a small tier that is
+   less suited to reading invoices.
 
 ---
 
@@ -123,7 +126,8 @@ the UI:
 | PDFs accepted from one email | 10 | `goodahead_invoice_ai_import.max_pdfs_per_message` |
 | Largest PDF sent for extraction | 15 MB | `goodahead_invoice_ai_import.max_pdf_bytes` |
 
-Anything refused by either limit is named on the import record's chatter.
+Anything refused by either limit is named on the import record: in its chatter, or
+as its error when nothing from that email was imported.
 
 Always on, not configurable:
 
@@ -158,11 +162,13 @@ that domain, every invoice printing an address there will match that contact.
 1. Upload a vendor PDF under **Accounting > Vendors > Bills > Upload**, into a
    purchase journal.
 2. The upload returns an **AI Invoice Import** record rather than a bill; the work is
-   queued. Imports are listed under **AI Invoice Imports**.
+   queued. Imports are listed under **Accounting > Vendors > AI Invoice Imports**.
 3. A queue_job worker must be running, or the record stays in `processing`.
 4. On success the record reaches `done` and links the vendor bill. The bill's
    chatter shows the model used, token counts, and the extraction JSON as an
    attachment.
 5. On failure the record goes to `failed` with the error, keeps its JSON, and appears
-   in the systray bubble for Bookkeepers and Administrators. Correct the JSON and use
+   in the systray bubble for accounting Administrators and users with full accounting
+   features (`account.group_account_user`; on 18.0 Community that group is hidden, so
+   in practice Administrators). Correct the JSON and use
    **Re-import from JSON** to retry without a new API call.

@@ -9,21 +9,37 @@ such as `EndpointID` are omitted rather than guessed.
 """
 
 import logging
+import re
 
 from lxml import etree
 
-# Core's own EAS table and endpoint rules, so emitted endpoints always pass
-# core's partner constraint.
+# Core's own EAS table, so emitted endpoints match core's partner fields.
 from odoo.addons.account_edi_ubl_cii.models.account_edi_common import EAS_MAPPING
-from odoo.addons.account_edi_ubl_cii.models.res_partner import (
-    PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS,
-    PEPPOL_ENDPOINT_INVALIDCHARS_RE,
-    sanitize_peppol_endpoint,
-)
 
 from .bank_numbers import payee_account_number, payee_institution_id
 
 _logger = logging.getLogger(__name__)
+
+# Odoo 18.0 ships no Peppol endpoint sanitizer. These character rules are the
+# ones later Odoo versions apply in `account_edi_ubl_cii`, kept here so an
+# emitted endpoint is clean on any core.
+PEPPOL_ENDPOINT_INVALIDCHARS_RE = re.compile(r"[^a-zA-Z\d\-._~]")
+PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS = {
+    "0208": re.compile(r"[^0-9]"),
+    "9925": re.compile(r"[^beBE0-9]"),
+    "EM": re.compile(r"[^a-zA-Z\d\-._@]"),
+}
+
+
+def sanitize_peppol_endpoint(peppol_endpoint, eas=None):
+    """Strip the characters the scheme `eas` does not allow."""
+    if not peppol_endpoint:
+        return peppol_endpoint
+    sanitizer = PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS.get(
+        eas, PEPPOL_ENDPOINT_INVALIDCHARS_RE
+    )
+    return sanitizer.sub("", peppol_endpoint)
+
 
 # Last-resort currency when neither the extraction nor the caller (normally the
 # company's own currency) supplies one.
@@ -279,8 +295,8 @@ def generate_peppol_invoice_xml(data, default_currency=None):
             _add_amount(line_tt, f"{{{NS_CBC}}}TaxAmount", line_tax,
                         currency, f"{at}: tax_amount")
 
-        # Item — combine name + description into Name because Odoo's
-        # UBL import reads Description first and ignores Name.
+        # Item: combine name and description into Name, because Odoo's UBL
+        # import reads Description first and ignores Name.
         item = etree.SubElement(line_el, f"{{{NS_CAC}}}Item")
 
         item_name = line.get("name", "")
@@ -391,17 +407,16 @@ def _fmt_decimal(value, label="an amount"):
 
 
 # EndpointID is emitted only where core's `EAS_MAPPING` says the country's
-# Peppol endpoint is the VAT number and the value passes core's own rules.
-# Every other case (unmapped countries, non-VAT schemes such as the Finnish OVT
-# code, invalid values) emits no EndpointID: that only skips one of core's
-# partner-matching steps and can never fail an import.
+# Peppol endpoint is the VAT number and the value passes the character and
+# length rules below. Every other case (unmapped countries, non-VAT schemes
+# such as the Finnish OVT code, invalid values) emits no EndpointID: that only
+# skips one of core's partner-matching steps and can never fail an import.
 
 
 def peppol_endpoint_is_valid(eas, endpoint):
-    """Core's character and length rules for an endpoint, applied here.
+    """Character and length rules for an endpoint.
 
-    Mirrors the tail of `res.partner._build_error_peppol_endpoint`, so a value
-    core would reject is omitted instead of failing the import.
+    A value that breaks them is omitted instead of risking a failed import.
     """
     if not endpoint:
         return False
@@ -424,7 +439,7 @@ def peppol_endpoint_for_party(country_code, vat):
     """`(eas, endpoint)` for a party, or `(None, None)` — the normal answer.
 
     `(None, None)` whenever core maps no VAT-based scheme for the country
-    (e.g. US, China, Finland). Never raises.
+    (e.g. US, China). Never raises.
     """
     # Values come from the model's JSON and may be ints.
     vat = str(vat or "").strip().upper()
@@ -444,7 +459,7 @@ def peppol_endpoint_for_party(country_code, vat):
         return None, None
 
     for eas in vat_peppol_eas_codes(country):
-        # Sanitised as core does, since core matches on the stored pair.
+        # Sanitised, since core matches partners on the stored scheme/endpoint pair.
         endpoint = sanitize_peppol_endpoint(vat, eas)
         if peppol_endpoint_is_valid(eas, endpoint):
             return eas, endpoint

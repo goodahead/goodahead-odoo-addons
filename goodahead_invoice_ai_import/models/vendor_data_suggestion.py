@@ -177,7 +177,8 @@ class GoodaheadVendorDataSuggestion(models.Model):
         """Record the invoice's bank account on the vendor (manual action only).
 
         The routing number is taken from the stored extraction and written to
-        ``clearing_number``, without which a US account cannot be paid.
+        the routing field (``aba_routing`` with ``l10n_us``), without which a
+        US account cannot be paid.
         """
         self.ensure_one()
         Bank = self.env["res.partner.bank"]

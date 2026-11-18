@@ -1,9 +1,11 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Profile gates for tests that can only pass on one of the two 19.0 import pipelines.
+"""Profile gates for tests that can only pass on one of the two UBL import pipelines.
 
-A gated test is skipped on the other pipeline, and
+The pipelines are `legacy` (Odoo 18.0 and early 19.0 builds) and `search_plan`
+(newer 19.0 builds); on 18.0 every `search_plan`-gated test is skipped. A gated
+test is skipped on the other pipeline, and
 `test_legacy_name_slot.TestBothProfilesAreCovered` checks that the gates really fired.
 Three registries are kept:
 

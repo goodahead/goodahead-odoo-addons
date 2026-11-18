@@ -66,30 +66,34 @@ class BillApprovalCommon(TransactionCase):
         cls.user_none = cls.env['res.users'].create({
             'name': 'BA no level',
             'login': 'ba_none',
+            'email': 'ba_none@example.com',
             'company_id': cls.company.id,
             'company_ids': [Command.set([cls.company.id])],
-            'group_ids': base_groups,
+            'groups_id': base_groups,
         })
         cls.user_reviewer = cls.env['res.users'].create({
-            'name': 'BA book keeper',
+            'name': 'BA bookkeeper',
             'login': 'ba_reviewer',
+            'email': 'ba_reviewer@example.com',
             'company_id': cls.company.id,
             'company_ids': [Command.set([cls.company.id])],
-            'group_ids': base_groups + [Command.link(cls.env.ref(GROUP_1).id)],
+            'groups_id': base_groups + [Command.link(cls.env.ref(GROUP_1).id)],
         })
         cls.user_director = cls.env['res.users'].create({
             'name': 'BA financial director',
             'login': 'ba_director',
+            'email': 'ba_director@example.com',
             'company_id': cls.company.id,
             'company_ids': [Command.set([cls.company.id])],
-            'group_ids': base_groups + [Command.link(cls.env.ref(GROUP_2).id)],
+            'groups_id': base_groups + [Command.link(cls.env.ref(GROUP_2).id)],
         })
         cls.user_both = cls.env['res.users'].create({
             'name': 'BA both levels',
             'login': 'ba_both',
+            'email': 'ba_both@example.com',
             'company_id': cls.company.id,
             'company_ids': [Command.set([cls.company.id])],
-            'group_ids': base_groups + [
+            'groups_id': base_groups + [
                 Command.link(cls.env.ref(GROUP_1).id),
                 Command.link(cls.env.ref(GROUP_2).id),
             ],

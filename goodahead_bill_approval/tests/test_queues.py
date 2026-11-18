@@ -165,7 +165,7 @@ class TestTheQueues(BillApprovalCommon):
 
         self.assertEqual(
             len(seen), len(truth),
-            "the number the book keeper's queue shows must be the number actually "
+            "the number the bookkeeper's queue shows must be the number actually "
             "approved and still draft - seen %s, actually %s" % (len(seen), len(truth)),
         )
         self.assertEqual(seen, truth, "and the same records, not just as many")
@@ -183,7 +183,7 @@ class TestTheQueues(BillApprovalCommon):
         )
         self.assertNotIn(
             planted['approved_auto_post'], seen,
-            "a domain missing the `auto_post` clause tells the book keeper to post a "
+            "a domain missing the `auto_post` clause tells the bookkeeper to post a "
             "bill that is already scheduled to post itself, for ever - the task would "
             "never clear, because posting is what clears it and nobody has to post it",
         )
@@ -259,18 +259,18 @@ class TestTheQueues(BillApprovalCommon):
         approve = self.env.ref('goodahead_bill_approval.menu_bills_awaiting_approval')
         to_post = self.env.ref('goodahead_bill_approval.menu_bills_to_post')
         self.assertEqual(
-            review.group_ids,
+            review.groups_id,
             self.env.ref('goodahead_bill_approval.group_bill_approval_1'))
         self.assertEqual(
-            approve.group_ids,
+            approve.groups_id,
             self.env.ref('goodahead_bill_approval.group_bill_approval_2'))
         self.assertEqual(
-            to_post.group_ids,
+            to_post.groups_id,
             self.env.ref('goodahead_bill_approval.group_bill_approval_1'),
-            "posting is the book keeper's job, so *Bills to Post* is gated on the REVIEW "
+            "posting is the bookkeeper's job, so *Bills to Post* is gated on the REVIEW "
             "level. Gating it on both would hand every financial director a worklist nobody "
-            "asked them to work; a director who also keeps books ticks the review box, "
-            "which the module keeps as a separate visible checkbox for exactly that reason",
+            "asked them to work; a director who also keeps books is given the review level "
+            "too, which the module keeps as a separate visible field for exactly that reason",
         )
 
     def test_the_state_column_is_stored_and_indexed(self):

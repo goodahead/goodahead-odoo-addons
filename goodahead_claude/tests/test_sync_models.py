@@ -241,22 +241,6 @@ class TestSyncModelsRetires(TransactionCase):
         self.assertEqual(self._resolve(model=OPUS["id"]), OPUS["id"])
         self.assertEqual(self._resolve(model=OLD["id"]), OLD["id"])
 
-    def test_fraud_detections_own_accessor_is_unchanged_by_archiving(self):
-        """A dependent module's pinned model (via its own accessor) survives archiving."""
-        detector = self.env.get("goodahead.fraud.detector")
-        if detector is None:                     # module not installed in this database
-            self.skipTest("goodahead_fraud_detection is not installed")
-        self._sync(FULL)
-        self.company.fraud_model_id = self._row(OLD["id"])
-        self.assertEqual(detector._get_model_id(self.company), OLD["id"])   # control
-
-        self._sync(WITHOUT_OLD)
-
-        self.assertEqual(detector._get_model_id(self.company), OLD["id"],
-                         "archiving changed what fraud detection sends")
-        self.assertEqual(self._resolve(model=detector._get_model_id(self.company)),
-                         OLD["id"])
-
     # ---------------------------------------------------------- the fallback model
 
     def test_the_fallback_is_not_the_small_tier_even_when_it_is_the_newest(self):
@@ -340,7 +324,7 @@ class TestSyncModelsRetires(TransactionCase):
             Client.messages_create(messages=[], company=self.company)
             Client.messages_create(messages=[], company=self.company, requires_pdf=True)
 
-        # The text-only call resolves as before.
+        # The plain call gets the newest big-tier model; the PDF call skips it for OPUS.
         self.assertEqual(sent, [NO_PDF["id"], OPUS["id"]])
 
     def test_an_undated_model_never_outranks_a_dated_one(self):

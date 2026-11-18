@@ -1,10 +1,12 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Approval levels as user-form checkboxes, and the step 2 substitute.
+"""Approval levels, and the step 2 substitute.
 
-Each level is a `res.groups` record without `privilege_id` (so it renders as a checkbox),
-mirrored here by a compute/inverse Boolean that is shown explicitly on the Access Rights page.
+Each level is a `res.groups` record alone in its own category, so the user form shows it as
+core's generated access-rights field under Accounting (see security/res_groups.xml). The
+Booleans below mirror the groups for code and tests and drive the substitute's visibility;
+they are not on the user form.
 """
 
 from odoo import api, fields, models
@@ -24,7 +26,7 @@ class ResUsers(models.Model):
         'res.users',
         string='Approval substitute (step 2)',
         domain=lambda self: [
-            ('all_group_ids', 'in', self.env.ref(GROUP_2).ids),
+            ('groups_id', 'in', self.env.ref(GROUP_2).ids),
             ('share', '=', False),
         ],
         help="Who may give approval step 2 for you on the documents you were chosen to "
@@ -75,7 +77,7 @@ class ResUsers(models.Model):
         compute='_compute_bill_approval_levels',
         inverse='_inverse_bill_approval_may_review',
         help="Let this user give approval step 1 on a vendor bill or customer credit note: the partner, the dates, "
-             "the lines and the accounts are right. Held by book keepers. Grants nothing "
+             "the lines and the accounts are right. Held by bookkeepers. Grants nothing "
              "else — it does not let this user post the bill.",
     )
     bill_approval_may_approve = fields.Boolean(
@@ -87,7 +89,7 @@ class ResUsers(models.Model):
              "steps on the same bill — that is a deliberate decision, not an oversight.",
     )
 
-    @api.depends('all_group_ids')
+    @api.depends('groups_id')
     def _compute_bill_approval_levels(self):
         for user in self:
             user.bill_approval_may_review = user._has_group(GROUP_1)
@@ -101,12 +103,12 @@ class ResUsers(models.Model):
 
     def _bill_approval_write_group(self, group_xmlid, field_name):
         group = self.env.ref(group_xmlid)
-        # `sudo()` only for writing back to `res.groups.user_ids`: reaching this inverse already
+        # `sudo()` only for writing back to `res.groups.users`: reaching this inverse already
         # required write access on `res.users`, which is the real gate (core does the same).
         # Written one way at a time, so a mixed selection cannot clear the other half.
         add = self.filtered(field_name)
         remove = self - add
         if add:
-            group.sudo().write({'user_ids': [(4, user.id) for user in add]})
+            group.sudo().write({'users': [(4, user.id) for user in add]})
         if remove:
-            group.sudo().write({'user_ids': [(3, user.id) for user in remove]})
+            group.sudo().write({'users': [(3, user.id) for user in remove]})

@@ -12,6 +12,10 @@ _logger = logging.getLogger(__name__)
 class AccountEdiUbl(models.AbstractModel):
     """Hooks of the search-plan UBL import pipeline (newer 19.0 builds).
 
+    Inert on Odoo 18.0: nothing in 18.0 core calls these methods. They stay so
+    the 18.0 and 19.0 branches share the same model code and tests (the
+    search-plan tests are skipped on 18.0).
+
     Newer builds route ``account.edi.xml.ubl_bis3`` through
     ``account.edi.ubl._ubl_import_invoice``, which resolves partners and
     products through search plans instead of ``account.edi.common``. Older
@@ -28,9 +32,9 @@ class AccountEdiUbl(models.AbstractModel):
         supplier's account. On ``in_refund`` the account is recorded on the
         vendor and ``partner_bank_id`` is left to ``_compute_partner_bank_id``.
 
-        The guards apply to every purchase document. They matter twice here:
-        core's customer search plan matches on bank account numbers, so a stray
-        IBAN on the company partner would be read back as a vendor match.
+        The guards apply to every purchase document. They matter more here,
+        because core's customer search plan matches on bank account numbers: a
+        stray IBAN on the company partner would be read back as a vendor match.
         """
         invoice = collected_values["invoice"]
         if invoice.move_type not in ("in_invoice", "in_refund", "in_receipt"):

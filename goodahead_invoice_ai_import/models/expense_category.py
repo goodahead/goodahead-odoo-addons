@@ -35,10 +35,13 @@ class ExpenseCategory(models.Model):
     )
     active = fields.Boolean(default=True)
 
-    _code_company_uniq = models.Constraint(
-        "UNIQUE(code, company_id)",
-        "Category code must be unique per company.",
-    )
+    _sql_constraints = [
+        (
+            "code_company_uniq",
+            "UNIQUE(code, company_id)",
+            "Category code must be unique per company.",
+        ),
+    ]
 
     @api.constrains("code", "company_id", "active")
     def _check_code_is_unambiguous(self):

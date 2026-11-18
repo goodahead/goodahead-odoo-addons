@@ -570,7 +570,7 @@ class AiInvoiceImport(models.Model):
         AI imports — and so sees the failed-imports bubble and the import menus.
 
         Access rules stay on `group_account_invoice`; notification is narrower.
-        Both groups are checked because in 19.0 core neither implies the other.
+        Both groups are checked because in core neither implies the other.
         Keep in step with `failed_imports_menu.js` and the menu items.
         """
         user = user or self.env.user

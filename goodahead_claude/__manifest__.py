@@ -12,7 +12,7 @@ Generic Claude API client used by other Goodahead modules. Provides:
   addons, with native prompt caching support
 * "Test Connection" and "Sync Models" actions in General Settings
 """,
-    "version": "19.0.1.4.0",
+    "version": "18.0.1.4.0",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

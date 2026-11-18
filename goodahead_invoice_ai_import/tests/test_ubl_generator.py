@@ -35,29 +35,18 @@ class TestUblGenerator(TransactionCase):
         }
 
     def test_the_generated_xml_is_classified_bis3_on_whichever_core_this_is(self):
-        """Core classifies the generated XML as `account.edi.xml.ubl_bis3` on both cores.
+        """Core classifies the generated XML as `account.edi.xml.ubl_bis3`.
 
-        On the search-plan core that routes the document through `_ubl_import_invoice`,
-        which never calls `_import_partner` or `_import_lines`. The generator emits no
-        `UBLVersionID`, which the cores check in different orders. Control: an NLCIUS
-        CustomizationID classifies as something else.
+        The generator emits no `UBLVersionID`: Odoo 18.0 reads it before the
+        CustomizationID and would classify the document as plain UBL 2.1.
+        Control: an NLCIUS CustomizationID classifies as something else.
         """
         xml = generate_peppol_invoice_xml(self._data(38.69, 20.95))
         move = self.env["account.move"]
 
         def classify(raw):
-            return move._get_import_file_type(
-                {
-                    "name": "invoice.xml",
-                    "raw": raw,
-                    "xml_tree": etree.fromstring(raw),
-                    "type": "xml",
-                    "mimetype": "application/xml",
-                    "attachment": self.env["ir.attachment"],
-                    "origin_attachment": self.env["ir.attachment"],
-                    "origin_import_file_type": "pdf",
-                }
-            )
+            builder = move._get_ubl_cii_builder_from_xml_tree(etree.fromstring(raw))
+            return builder._name if builder is not None else None
 
         self.assertEqual(classify(xml), "account.edi.xml.ubl_bis3")
         self.assertNotIn(

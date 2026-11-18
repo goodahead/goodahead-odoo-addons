@@ -4,14 +4,12 @@
 """Vendor matching on a phone number and an email/website domain, and the
 deliberate refusal to invent a vendor when nothing matches.
 
-On ordinary US invoices core's exact name step is often the only one that can
-fire, which leads to duplicate vendors. Every test pairs "it matched" with a
+On ordinary US invoices core's name step is often the only one that can fire,
+which leads to duplicate vendors. Every test pairs "it matched" with a
 control showing that something else did not. `extract_invoice` is patched to
 raise, so no test can reach the Claude API. Fixture names and numbers are
 fictional (`ZZ…`, 555-01xx) so they cannot collide with real partners.
 """
-
-import logging
 
 from unittest.mock import patch
 
@@ -19,17 +17,16 @@ from lxml import etree
 
 from odoo.tests import TransactionCase, tagged
 
+from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
+from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+    generate_peppol_invoice_xml,
+)
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
 )
 
 from .posting import post_bill
 from .profiles import skip_method_unless_profile
-
-from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
-    generate_peppol_invoice_xml,
-)
 
 NS = {
     "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
@@ -396,9 +393,11 @@ class TestVendorIdentifierMatching(_NoClaudeMixin, TransactionCase):
         self.assertIsNone(party.find("cac:Contact", NS))
 
     def test_the_decoder_resolves_the_vendor_by_phone(self):
-        """The phone step runs inside a real decode.
+        """Phone matching runs inside a real decode, on either pipeline.
 
-        Asserted before `_ai_post_process`, which does its own matching.
+        On Odoo 18.0 it runs at core's name slot; on the search-plan core as a
+        plan step. Asserted before `_ai_post_process`, which does its own
+        matching.
         """
         extracted = _extraction(
             name="ZZ Liberty Example Equipment Import (NY)Inc.",
@@ -646,17 +645,16 @@ class TestNoVendorIsInvented(_NoClaudeMixin, TransactionCase):
             "raw": xml_bytes,
             "xml_tree": etree.fromstring(xml_bytes),
             "type": "xml",
+            "filename": "invoice.xml",
             "mimetype": "application/xml",
             "attachment": self.env["ir.attachment"],
-            "origin_attachment": self.env["ir.attachment"],
-            "origin_import_file_type": "xml",
         }
-        file_data["import_file_type"] = move._get_import_file_type(file_data)
 
         # NOTE: no `ai_invoice_import` on the context — this is the plain
         # core path, exactly as a document arriving over Peppol would take it.
-        decoder = self.AM._get_edi_decoder(file_data, new=True)
-        decoder["decoder"](move, file_data, True)
+        # On the move itself: Enterprise's OCR override calls `ensure_one()`.
+        decoder = move._get_edi_decoder(file_data, new=True)
+        decoder(move, file_data, True)
 
         self.assertTrue(
             move.partner_id, "core must still create a vendor for a real UBL file"
@@ -915,7 +913,7 @@ class TestTheSeed(_NoClaudeMixin, TransactionCase):
         self.assertNotIn("domain", kinds)
 
     def test_the_seed_is_idempotent(self):
-        """The seed is idempotent; it runs from `post_init_hook` and a migration."""
+        """The seed is idempotent, so running it again is harmless."""
         partner = self.Partner.create(
             {"name": "ZZ Seed Twice", "is_company": True, "phone": "+1 833-555-0131"}
         )
@@ -930,5 +928,4 @@ class TestTheSeed(_NoClaudeMixin, TransactionCase):
 
         self.assertEqual(first, 1)
         self.assertEqual(len(partner.identifier_ids), 1)
-
 

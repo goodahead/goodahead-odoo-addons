@@ -28,7 +28,7 @@ class BillApprovalReview(models.TransientModel):
         'res.users',
         string='Approver (step 2)',
         domain=lambda self: [
-            ('all_group_ids', 'in', self.env.ref(GROUP_2).ids),
+            ('groups_id', 'in', self.env.ref(GROUP_2).ids),
             ('share', '=', False),
         ],
         help="Who gives approval step 2. Leave empty to let anyone holding \"Bills: may "
@@ -36,15 +36,15 @@ class BillApprovalReview(models.TransientModel):
     )
 
     @api.model
-    def default_get(self, fields):
-        values = super().default_get(fields)
+    def default_get(self, fields_list):
+        values = super().default_get(fields_list)
         if self.env.context.get('active_model') != 'account.move':
             return values
         moves = self.env['account.move'].browse(self.env.context.get('active_ids') or [])
-        if 'move_ids' in fields:
+        if 'move_ids' in fields_list:
             values['move_ids'] = [(6, 0, moves.ids)]
         approvers = moves.mapped(APPROVER_FIELD)
-        if 'approver_id' in fields and len(approvers) == 1 \
+        if 'approver_id' in fields_list and len(approvers) == 1 \
                 and all(move[APPROVER_FIELD] for move in moves):
             values['approver_id'] = approvers.id
         return values

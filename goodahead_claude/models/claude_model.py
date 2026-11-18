@@ -42,7 +42,6 @@ class ClaudeModel(models.Model):
              "selection.",
     )
 
-    _model_api_id_uniq = models.Constraint(
-        "UNIQUE(model_api_id)",
-        "Model ID must be unique.",
-    )
+    _sql_constraints = [
+        ("model_api_id_uniq", "UNIQUE(model_api_id)", "Model ID must be unique."),
+    ]

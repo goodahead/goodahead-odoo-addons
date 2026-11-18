@@ -3,10 +3,16 @@
 {
     "name": "AI Invoice Import",
     "summary": "Import vendor bills from PDF using Claude AI and Peppol BIS 3.0",
-    "version": "19.0.3.33.0",
+    # Set so Odoo does not render README.md as reStructuredText on the Apps page.
+    "description": (
+        "Turns vendor bill PDFs, uploaded or received by email, into draft vendor "
+        "bills. Claude reads the PDF; the result is checked and imported through "
+        "Odoo's own UBL importer. Features and setup: see README.md in the module."
+    ),
+    "version": "18.0.3.33.0",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
-    "website": "https://goodahead.com",
+    "website": "https://www.goodahead.com/",
     "category": "Accounting",
     "depends": [
         "account",

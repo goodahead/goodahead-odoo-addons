@@ -1,14 +1,12 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Product plan narrowing for purchase documents with a known vendor.
+"""Product matching narrowed for purchase documents with a known vendor.
 
 When the vendor is known, product matching is narrowed to supplierinfo and
-barcode, dropping core's `default_code`, `name` and predictive steps. On the
-search-plan build this narrows `_import_ubl_retrieve_products_search_plan`; on
-the legacy build it narrows `product.product._get_product_domain_search_order`,
-where the module also supplies the supplierinfo domain (see
-`models/product_product.py`).
+barcode, dropping core's `default_code` and `name` steps. On Odoo 18.0 this is
+`product.product._retrieve_product` (see `models/product_product.py`), fed by
+the vendor context `account.edi.common._import_invoice_lines` sets.
 
 The discriminating case is the fall-through: a vendor code with no supplierinfo
 row that equals the internal reference of an unrelated product of ours. The two
@@ -19,20 +17,19 @@ from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
+# Core's classes, imported directly so a control can call core's
+# implementation while this module is installed.
+from odoo.addons.account_edi_ubl_cii.models.account_edi_common import (
+    AccountEdiCommon as CoreAccountEdiCommon,
+)
+from odoo.addons.account_edi_ubl_cii.models.account_edi_ubl import (
+    AccountEdiUBL as CoreAccountEdiUBL,
+)
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
 )
 
 from .profiles import skip_method_unless_profile
-
-# Core's classes, imported directly so a control can call core's
-# implementation while this module is installed.
-from odoo.addons.account_edi_ubl_cii.models.account_edi_ubl import (
-    AccountEdiUBL as CoreAccountEdiUBL,
-)
-from odoo.addons.account_edi_ubl_cii.models.account_edi_common import (
-    AccountEdiCommon as CoreAccountEdiCommon,
-)
 
 # A code we DO have a supplierinfo row for.
 MAPPED_CODE = "ZZ-ART-7788"
@@ -197,91 +194,89 @@ class TestProductMatching(TransactionCase):
         self.assertIn("_import_retrieve_product_from_default_code", names)
 
     # ------------------------------------------------------------------
-    # The same decision, the other build's seam
+    # `_retrieve_product`, called directly
     # ------------------------------------------------------------------
-    #
-    # `product.product._get_product_domain_search_order` is declared by core
-    # on both builds with the same shape, and these tests call it directly,
-    # so they run on both. They are the only direct tests of
-    # `_ai_vendor_supplierinfo_domain`.
     #
     # The supplierinfo domain must scope vendor and code to the same row with
     # `any`; two independent dotted leaves would let a product with rows
     # (VendorA, "111") and (VendorB, "XXX") match VendorA quoting "XXX".
 
-    def _legacy_plan(self, vendor=None, **vals):
+    def _retrieve(self, context=None, **vals):
         Product = self.env["product.product"]
-        if vendor is not None:
-            Product = Product.with_context(ai_import_vendor_partner_id=vendor.id)
-        return Product._get_product_domain_search_order(**vals)
+        if context:
+            Product = Product.with_context(**context)
+        return Product._retrieve_product(**vals)
 
-    def test_the_legacy_plan_keeps_supplierinfo_and_barcode_only(self):
-        plan = self._legacy_plan(
-            vendor=self.vendor,
-            default_code=UNMAPPED_CODE,
-            barcode="ZZ-GTIN-1",
-            name="Something the vendor calls their own thing",
+    def test_the_supplierinfo_domain_is_one_row_scoped_leaf(self):
+        domain = self.env["product.product"]._ai_vendor_supplierinfo_domain(
+            self.vendor.id, (MAPPED_CODE, None)
         )
+        self.assertEqual(len(domain), 1, domain)
+        path, operator, subdomain = domain[0]
+        self.assertEqual((path, operator), ("product_tmpl_id.seller_ids", "any"))
+        self.assertIn(("partner_id", "=", self.vendor.id), subdomain)
+        self.assertIn(("product_code", "in", [MAPPED_CODE]), subdomain)
+
+    def test_a_known_vendor_never_matches_our_default_code_or_name(self):
+        vendor_ctx = {"ai_import_vendor_partner_id": self.vendor.id}
+
+        self.assertFalse(
+            self._retrieve(vendor_ctx, default_code=UNMAPPED_CODE),
+            "the vendor's code must not be matched against our default_code",
+        )
+        self.assertFalse(
+            self._retrieve(vendor_ctx, name="ZZ Decoy Product"),
+            "core's name match is dropped once the vendor is known",
+        )
+        self.assertEqual(
+            self._retrieve(vendor_ctx, default_code=MAPPED_CODE),
+            self.mapped_product,
+            "the vendor's own supplierinfo row still resolves",
+        )
+
+    def test_a_barcode_still_matches_with_a_known_vendor(self):
+        self.decoy.barcode = "ZZ-GTIN-1"
+        vendor_ctx = {"ai_import_vendor_partner_id": self.vendor.id}
 
         self.assertEqual(
-            [priority for priority, _domain in plan],
-            [5, 10],
-            "the plan must be exactly supplierinfo then barcode: %r" % (plan,),
+            self._retrieve(vendor_ctx, default_code=UNMAPPED_CODE, barcode="ZZ-GTIN-1"),
+            self.decoy,
+            "a GTIN is global, so it is the one key kept",
         )
-        # `Domain.__repr__` is the list form, so this reads the real domain.
-        supplierinfo = repr(plan[0][1])
-        self.assertIn("product_tmpl_id.seller_ids", supplierinfo)
-        self.assertIn("any", supplierinfo)
-        self.assertIn("partner_id", supplierinfo)
-        self.assertIn("product_code", supplierinfo)
-        self.assertIn("barcode", repr(plan[1][1]))
-        # The key assertion: core's `default_code` and `name` steps are gone.
-        self.assertNotIn("default_code", repr(plan))
-        self.assertNotIn("'name'", repr(plan))
 
-    def test_the_legacy_plan_is_untouched_without_a_vendor(self):
-        """Without a vendor, core's full plan is returned."""
-        plan = self._legacy_plan(default_code=UNMAPPED_CODE, name="ZZ Thing")
+    def test_without_the_context_core_decides(self):
+        """CONTROL: without our context key core's lookup runs, and it picks
+        the decoy by `default_code`."""
+        self.assertEqual(self._retrieve(default_code=UNMAPPED_CODE), self.decoy)
 
-        self.assertIn("default_code", repr(plan))
+    def test_a_code_the_vendor_does_not_quote_matches_nothing(self):
+        """With no codes and no barcode, nothing matches (no empty `in []`)."""
+        vendor_ctx = {"ai_import_vendor_partner_id": self.vendor.id}
 
-    def test_a_code_the_vendor_does_not_quote_produces_no_supplierinfo_step(self):
-        """With no codes, no supplierinfo step is emitted (rather than one with
-        an empty `in []`)."""
-        plan = self._legacy_plan(vendor=self.vendor, name="ZZ Thing")
-
-        self.assertEqual(plan, [])
+        self.assertFalse(self._retrieve(vendor_ctx, name="ZZ Mapped Product"))
 
     # ------------------------------------------------------------------
     # The relay, and the two things it must not do
     # ------------------------------------------------------------------
 
-    def _vendor_seen_by_import_lines(self, record, tax_type, ours=True):
-        """Run `_import_lines` with core's body replaced by a spy and return
-        the vendor id this module put on the context.
+    def _vendor_seen_by_import_lines(self, record, ours=True):
+        """Run `_import_invoice_lines` with core's body replaced by a spy and
+        return the vendor id this module put on the context.
 
         Core's class is patched (not the registry class) so `super()` in our
         override lands on the spy. `ours=False` drops the `ai_invoice_import`
         key.
         """
-        return self._context_seen_by_import_lines(record, tax_type, ours=ours).get(
+        return self._context_seen_by_import_lines(record, ours=ours).get(
             "ai_import_vendor_partner_id"
         )
 
-    def _context_seen_by_import_lines(self, record, tax_type, ours=True):
+    def _context_seen_by_import_lines(self, record, ours=True):
         """The same spy, returning both narrowing context keys ("no vendor id"
         and "no vendor" are different states)."""
         seen = []
 
-        def spy(
-            self,
-            record,
-            tree,
-            xpath,
-            document_type=False,
-            tax_type=False,
-            qty_factor=1,
-        ):
+        def spy(self, invoice, tree, xpath, qty_factor):
             seen.append(
                 {
                     key: self.env.context.get(key)
@@ -296,9 +291,9 @@ class TestProductMatching(TransactionCase):
         edi = self.env["account.edi.xml.ubl_bis3"]
         if ours:
             edi = edi.with_context(ai_invoice_import=True)
-        with patch.object(CoreAccountEdiCommon, "_import_lines", spy):
-            edi._import_lines(record, None, "./nothing", tax_type=tax_type)
-        self.assertEqual(len(seen), 1, "core's _import_lines was not reached")
+        with patch.object(CoreAccountEdiCommon, "_import_invoice_lines", spy):
+            edi._import_invoice_lines(record, None, "./nothing", 1)
+        self.assertEqual(len(seen), 1, "core's _import_invoice_lines was not reached")
         return seen[0]
 
     # ------------------------------------------------------------------
@@ -306,15 +301,15 @@ class TestProductMatching(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_a_suppressed_vendor_does_not_re_arm_cores_default_code_step(self):
-        """On a bill with no vendor, the plan is barcode only.
+        """On a bill with no vendor, only the barcode can match.
 
         When vendor creation is suppressed, `partner_id` stays empty. Without
-        the `ai_import_vendor_unknown` key, core's full plan would match the
-        vendor's article code against our internal references. A GTIN is a
-        global namespace, so barcode is the one step kept.
+        the `ai_import_vendor_unknown` key, core would match the vendor's
+        article code against our internal references. A GTIN is a global
+        namespace, so barcode is the one key kept.
 
-        Controls: a known vendor still gets its supplierinfo step, and a
-        document this module did not produce keeps core's full plan.
+        Controls: a known vendor still resolves its supplierinfo rows, and a
+        document this module did not produce keeps core's lookup.
         """
         homeless = self.env["account.move"].create({"move_type": "in_invoice"})
         self.assertFalse(
@@ -322,59 +317,41 @@ class TestProductMatching(TransactionCase):
             "CONTROL: this is the state the create suppression leaves",
         )
 
-        context = self._context_seen_by_import_lines(homeless, "purchase")
+        context = self._context_seen_by_import_lines(homeless)
         self.assertFalse(context["ai_import_vendor_partner_id"])
         self.assertTrue(
             context["ai_import_vendor_unknown"],
             "'no vendor id on the context' and 'there is no vendor' are "
-            "different states, and only the second one can narrow the plan",
+            "different states, and only the second one can narrow the lookup",
         )
-
-        plan = (
-            self.env["product.product"]
-            .with_context(**context)
-            ._get_product_domain_search_order(
-                default_code=UNMAPPED_CODE, barcode="ZZ-GTIN-1", name="ZZ Thing"
-            )
-        )
-        self.assertNotIn(
-            "default_code",
-            repr(plan),
+        self.assertFalse(
+            self._retrieve(context, default_code=UNMAPPED_CODE, name="ZZ Decoy Product"),
             "a vendor's article code must not be matched against our own "
-            "internal references on a bill whose vendor is unknown: %r" % (plan,),
+            "internal references on a bill whose vendor is unknown",
         )
-        self.assertNotIn("'name'", repr(plan))
-        self.assertIn(
-            "barcode",
-            repr(plan),
+        self.decoy.barcode = "ZZ-GTIN-2"
+        self.assertEqual(
+            self._retrieve(context, default_code=UNMAPPED_CODE, barcode="ZZ-GTIN-2"),
+            self.decoy,
             "a GTIN is a global namespace and is the one key that survives",
         )
 
         with_vendor = self._context_seen_by_import_lines(
             self.env["account.move"].create(
                 {"move_type": "in_invoice", "partner_id": self.vendor.id}
-            ),
-            "purchase",
+            )
         )
-        self.assertIn(
-            "product_tmpl_id.seller_ids",
-            repr(
-                self.env["product.product"]
-                .with_context(**with_vendor)
-                ._get_product_domain_search_order(default_code=UNMAPPED_CODE)
-            ),
-            "CONTROL: a known vendor still narrows to its own supplierinfo rows",
+        self.assertEqual(
+            self._retrieve(with_vendor, default_code=MAPPED_CODE),
+            self.mapped_product,
+            "CONTROL: a known vendor still resolves its own supplierinfo rows",
         )
 
-        not_ours = self._context_seen_by_import_lines(homeless, "purchase", ours=False)
-        self.assertIn(
-            "default_code",
-            repr(
-                self.env["product.product"]
-                .with_context(**not_ours)
-                ._get_product_domain_search_order(default_code=UNMAPPED_CODE)
-            ),
-            "CONTROL: a document this module did not produce keeps core's plan",
+        not_ours = self._context_seen_by_import_lines(homeless, ours=False)
+        self.assertEqual(
+            self._retrieve(not_ours, default_code=UNMAPPED_CODE),
+            self.decoy,
+            "CONTROL: a document this module did not produce keeps core's lookup",
         )
 
     def test_a_purchase_document_puts_its_vendor_on_the_context(self):
@@ -382,27 +359,22 @@ class TestProductMatching(TransactionCase):
             {"move_type": "in_invoice", "partner_id": self.vendor.id}
         )
 
-        self.assertEqual(
-            self._vendor_seen_by_import_lines(move, "purchase"), self.vendor.id
-        )
+        self.assertEqual(self._vendor_seen_by_import_lines(move), self.vendor.id)
 
     def test_somebody_else_s_purchase_document_is_left_to_core(self):
-        """Without the `ai_invoice_import` key, `_import_lines` sets no vendor
-        context, so genuine supplier e-invoices (e.g. from
-        `purchase_edi_ubl_bis3`) keep core's product plan.
+        """Without the `ai_invoice_import` key, `_import_invoice_lines` sets no
+        vendor context, so genuine supplier e-invoices keep core's lookup.
         """
         move = self.env["account.move"].create(
             {"move_type": "in_invoice", "partner_id": self.vendor.id}
         )
 
         self.assertIsNone(
-            self._vendor_seen_by_import_lines(move, "purchase", ours=False),
-            "a document this module did not produce keeps core's product plan",
+            self._vendor_seen_by_import_lines(move, ours=False),
+            "a document this module did not produce keeps core's product lookup",
         )
         # Control: the same document, declared ours, does narrow.
-        self.assertEqual(
-            self._vendor_seen_by_import_lines(move, "purchase"), self.vendor.id
-        )
+        self.assertEqual(self._vendor_seen_by_import_lines(move), self.vendor.id)
 
     def test_a_sale_document_puts_nobody_on_the_context(self):
         """On a sale document `partner_id` is the customer, so no vendor scope
@@ -411,7 +383,7 @@ class TestProductMatching(TransactionCase):
             {"move_type": "out_invoice", "partner_id": self.vendor.id}
         )
 
-        self.assertIsNone(self._vendor_seen_by_import_lines(move, "sale"))
+        self.assertIsNone(self._vendor_seen_by_import_lines(move))
 
     def test_the_relay_carries_the_commercial_partner_not_the_contact(self):
         """A bill filed against a child contact uses the commercial partner's
@@ -423,27 +395,15 @@ class TestProductMatching(TransactionCase):
             {"move_type": "in_invoice", "partner_id": contact.id}
         )
 
-        self.assertEqual(
-            self._vendor_seen_by_import_lines(move, "purchase"), self.vendor.id
-        )
+        self.assertEqual(self._vendor_seen_by_import_lines(move), self.vendor.id)
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_the_context_key_changes_nothing_on_this_build(self):
         """On the search-plan build the context key has no effect on core's
-        `_retrieve_product`.
+        `_retrieve_product`. (Never runs on 18.0.)
         """
-        Product = self.env["product.product"]
-
         self.assertEqual(
-            Product.with_context(
-                ai_import_vendor_partner_id=self.vendor.id
-            )._retrieve_product(default_code=UNMAPPED_CODE),
-            self.decoy,
-        )
-        self.assertEqual(
-            Product._retrieve_product(default_code=UNMAPPED_CODE),
-            self.decoy,
-            "the control — this core's answer is the same either way",
+            self._retrieve(default_code=UNMAPPED_CODE), self.decoy,
         )
 
     # ------------------------------------------------------------------
@@ -522,7 +482,7 @@ class TestProductMatching(TransactionCase):
     def test_supplierinfo_is_scoped_to_the_same_row_not_merely_the_product(self):
         """Vendor and code must match on the same supplierinfo row.
 
-        Core uses `('product_tmpl_id.seller_ids', 'any', [...])`; two
+        The supplierinfo domain uses `('product_tmpl_id.seller_ids', 'any', [...])`; two
         independent dotted leaves would match a product where another vendor
         uses the quoted code.
         """

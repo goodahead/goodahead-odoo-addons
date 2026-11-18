@@ -1,7 +1,7 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The "bill to post" activity raised for the book keeper after step 2.
+"""The "bill to post" activity raised for the bookkeeper after step 2.
 
 Assertions read `mail.activity` directly rather than through `activity_search`.
 Every test that expects no task also checks what must still hold (the bill in the
@@ -44,13 +44,14 @@ class TestTheTask(BillApprovalCommon):
         return move
 
     def _second_reviewer(self):
-        """A second book keeper: neither the assignee nor the creator of the task."""
+        """A second bookkeeper: neither the assignee nor the creator of the task."""
         return self.env['res.users'].create({
-            'name': 'BA second book keeper',
+            'name': 'BA second bookkeeper',
             'login': 'ba_reviewer_2',
+            'email': 'ba_reviewer_2@example.com',
             'company_id': self.company.id,
             'company_ids': [Command.set([self.company.id])],
-            'group_ids': [
+            'groups_id': [
                 Command.link(self.env.ref('base.group_user').id),
                 Command.link(self.env.ref('account.group_account_invoice').id),
                 Command.link(self.env.ref('account.group_account_user').id),
@@ -118,7 +119,7 @@ class TestTheTask(BillApprovalCommon):
         self.assertEqual(
             move.activity_user_id, self.user_reviewer,
             "\"My Activities\" matches on this field, so it is what puts the bill "
-            "on the book keeper's own list rather than merely in the database",
+            "on the bookkeeper's own list rather than merely in the database",
         )
 
     def test_the_task_is_not_raised_twice_on_one_bill(self):
@@ -149,7 +150,7 @@ class TestTheTask(BillApprovalCommon):
             move,
             self.env['account.move'].search(
                 QUEUE_TO_POST_DOMAIN + [('id', '=', move.id)]),
-            "the control: the bill must still be in the book keeper's queue. "
+            "the control: the bill must still be in the bookkeeper's queue. "
             "Without this clause the test above passes just as well for a feature "
             "that lost the bill entirely",
         )
@@ -168,7 +169,7 @@ class TestTheTask(BillApprovalCommon):
             move,
             self.env['account.move'].search(
                 QUEUE_TO_POST_DOMAIN + [('id', '=', move.id)]),
-            "the control: the bill is still the book keeper's to post",
+            "the control: the bill is still the bookkeeper's to post",
         )
         bodies = ' '.join(move.message_ids.mapped('body'))
         self.assertIn(

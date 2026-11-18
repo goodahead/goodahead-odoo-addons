@@ -31,8 +31,8 @@ Microsoft 365 tenant, or there is no MX at all". That shows a corporate tenant
 answers for the domain. It does not show that a domain is *not* a company, and it
 says nothing about an ISP or portal that runs its own mail gateway.
 
-Five shipped entries are domains of live companies whose consumer mail runs on
-their own infrastructure:
+Five shipped entries (four Nordic, plus the US `comcast.com`) are domains of live
+companies whose consumer mail runs on their own infrastructure:
 
 | shipped host | MX | shape |
 |---|---|---|

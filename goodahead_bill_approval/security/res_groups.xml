@@ -1,20 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- No `privilege_id` on either group: that is what makes the 19.0 user form render them
-         as checkboxes rather than a dropdown. The generated "Extra Rights" block only shows in
-         developer mode, so views/res_users_views.xml adds both checkboxes explicitly.
-         Neither group implies the other. -->
+    <!-- One category per level, each holding only that level's group. The 18.0 user form
+         renders a category with one group as a field of its own ("selection" kind) in the
+         section named after the parent category, so both levels show under Accounting
+         outside developer mode and go through core's own access-rights onchange. Two groups
+         in one category, or groups without a category, become checkboxes that 18.0 only
+         shows in developer mode. Neither group implies the other. -->
+
+    <record id="module_category_bill_approval_review" model="ir.module.category">
+        <field name="name">Bill Review (step 1)</field>
+        <field name="parent_id" ref="base.module_category_accounting"/>
+        <field name="sequence">90</field>
+        <field name="description">May give approval step 1 on vendor bills and customer credit notes.</field>
+    </record>
+
+    <record id="module_category_bill_approval_approve" model="ir.module.category">
+        <field name="name">Bill Approval (step 2)</field>
+        <field name="parent_id" ref="base.module_category_accounting"/>
+        <field name="sequence">91</field>
+        <field name="description">May give approval step 2 on vendor bills and customer credit notes.</field>
+    </record>
 
     <record id="group_bill_approval_1" model="res.groups">
         <field name="name">Bills: may review (step 1)</field>
+        <field name="category_id" ref="module_category_bill_approval_review"/>
         <field name="comment">May give approval step 1 on a vendor bill or a customer credit note: the partner, the
-dates, the lines and the accounts on it are right. Held by book keepers. A vendor bill cannot
+dates, the lines and the accounts on it are right. Held by bookkeepers. A vendor bill cannot
 be posted until it carries this approval and approval step 2, so this group does not let its
 holder post anything on its own.</field>
     </record>
 
     <record id="group_bill_approval_2" model="res.groups">
         <field name="name">Bills: may approve (step 2)</field>
+        <field name="category_id" ref="module_category_bill_approval_approve"/>
         <field name="comment">May give approval step 2 on a vendor bill or a customer credit note: we agree to it.
 Held by the financial director. Step 2 follows step 1 — a bill nobody has reviewed cannot be
 approved. A user who holds BOTH levels may clear both steps on the same bill: separation of

@@ -3,8 +3,8 @@
 
 """Decide from the PDF's text layer, not the model, whether a page prints money.
 
-The model's `currency_symbol` answer has been seen to differ between runs on
-identical bytes, so the text layer decides whenever it can be read. No test
+The model's `currency_symbol` answer can differ between runs on identical
+bytes, so the text layer decides whenever it can be read. No test
 here reaches the Claude API: the lib tests use a stub client and the
 TransactionCase installs `_NoClaudeMixin`. All PDFs are built in-process.
 """
@@ -514,11 +514,11 @@ class TestWhatCountsAsACurrencyMarking(BaseCase):
             ("TOTAL ＄1,234.00", ["＄"]),  # U+FF04 fullwidth dollar
             ("TOTAL ﹩1,234.00", ["﹩"]),  # U+FE69 small dollar
             ("Total CHF 1'234.55", ["CHF"]),  # Swiss apostrophe, leading code
-            ("Total 1'234.55 CHF", ["CHF"]),  # … and it already worked here
+            ("Total 1'234.55 CHF", ["CHF"]),  # … and trailing code
             ("Total CHF 1’234.55", ["CHF"]),  # U+2019, the typographic twin
             ("Total EUR 1 234,56", ["EUR"]),  # U+202F narrow no-break
             ("Total EUR 1 234,56", ["EUR"]),  # U+2009 thin space
-            ("Total EUR 1 234,56", ["EUR"]),  # U+00A0 already worked
+            ("Total EUR 1 234,56", ["EUR"]),  # U+00A0 no-break space
             ("Summa 1 500 kr", ["kr"]),  # round kronor are ordinary
             ("Summa 1 234,00 kr", ["kr"]),  # … and so are decimal ones
         ):
@@ -786,7 +786,7 @@ class TestTheTextLayerVerdict(BaseCase):
             (b"$1,234.00", "$1,234.00"),
             (b"$1,234.00 ", "$1,234.00 "),
             (b"Total $1,234.00 ", "Total $1,234.00 "),
-            # The BOM case, which always worked and has to keep working.
+            # The BOM case.
             (b"\xfe\xff\x00$\x001", "$1"),
         ):
             with self.subTest(raw=raw):

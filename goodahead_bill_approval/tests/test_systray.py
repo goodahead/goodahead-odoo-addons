@@ -10,6 +10,7 @@ and do not prove the asset bundle compiles.
 
 from lxml import etree
 
+from odoo.exceptions import AccessError
 from odoo.tests import tagged
 from odoo.tools.safe_eval import safe_eval
 
@@ -34,8 +35,9 @@ class TestTheSystrayCounts(BillApprovalCommon):
     def _rows(self, user):
         return {row['id']: row for row in self._counts(user).get('rows', [])}
 
-    def _session(self, user):
-        return self.env['ir.http'].with_user(user).lazy_session_info()
+    def _served(self, user):
+        """What the systray menu receives when `user` loads a page."""
+        return self.env['account.move'].with_user(user).bill_approval_systray_data()
 
     def _filter_domain(self, name, action_xmlid=None, uid=None):
         """A filter's domain from the installed arch of the action's search view.
@@ -85,17 +87,17 @@ class TestTheSystrayCounts(BillApprovalCommon):
         return planted
 
     def test_a_user_holding_neither_level_gets_nothing_at_all(self):
-        """A user with no level gets `{}` and no session key, which is how the
-        systray item hides itself."""
+        """A user with no level is served `{}`, which is how the systray item hides
+        itself."""
         self.assertEqual(self._counts(self.user_none), {})
-        self.assertNotIn(
-            'goodahead_bill_approval', self._session(self.user_none),
-            "and the key must be ABSENT from the session response, not empty",
+        self.assertEqual(
+            self._served(self.user_none), {},
+            "and the menu must be served nothing, not an empty row list",
         )
-        self.assertIn(
-            'goodahead_bill_approval', self._session(self.user_reviewer),
-            "the control: the key does arrive for somebody who holds a level, "
-            "so the assertion above is not passing because nothing ever arrives",
+        self.assertTrue(
+            self._served(self.user_reviewer).get('rows'),
+            "the control: rows do arrive for somebody who holds a level, so the "
+            "assertion above is not passing because nothing ever arrives",
         )
 
     def test_each_role_is_shown_only_what_it_can_act_on(self):
@@ -103,7 +105,7 @@ class TestTheSystrayCounts(BillApprovalCommon):
         self.assertEqual(
             set(self._rows(self.user_reviewer)),
             {'to_review', 'to_post', 'cn_to_review', 'cn_to_post'},
-            "a book keeper reviews bills and credit notes and posts approved ones; "
+            "a bookkeeper reviews bills and credit notes and posts approved ones; "
             "approving is not theirs",
         )
         self.assertEqual(
@@ -126,7 +128,8 @@ class TestTheSystrayCounts(BillApprovalCommon):
         )
 
     def test_an_external_user_never_reaches_the_count(self):
-        """The `_is_internal` guard in `ir_http` keeps external users out of the count.
+        """The `_is_internal` guard in `bill_approval_systray_data` keeps external users
+        out of the count.
 
         The portal user is given the review level so that only the guard, not the
         group check, keeps them out.
@@ -134,9 +137,10 @@ class TestTheSystrayCounts(BillApprovalCommon):
         external = self.env['res.users'].create({
             'name': 'BA portal with a level',
             'login': 'ba_portal',
+            'email': 'ba_portal@example.com',
             'company_id': self.company.id,
             'company_ids': [(6, 0, [self.company.id])],
-            'group_ids': [(6, 0, [
+            'groups_id': [(6, 0, [
                 self.env.ref('base.group_portal').id,
                 self.env.ref(GROUP_1).id,
             ])],
@@ -151,7 +155,36 @@ class TestTheSystrayCounts(BillApprovalCommon):
             "level, so only `_is_internal` keeps them out of the count",
         )
 
-        self.assertNotIn('goodahead_bill_approval', self._session(external))
+        self.assertEqual(self._served(external), {})
+
+    def test_a_level_holder_who_cannot_read_bills_is_served_nothing(self):
+        """A level given to an internal user without accounting rights does not raise.
+
+        The menu asks on every page load, so an AccessError here would put an error
+        dialog in front of that user on every page.
+        """
+        no_accounting = self.env['res.users'].create({
+            'name': 'BA level without accounting',
+            'login': 'ba_no_accounting',
+            'email': 'ba_no_accounting@example.com',
+            'company_id': self.company.id,
+            'company_ids': [(6, 0, [self.company.id])],
+            'groups_id': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref(GROUP_1).id,
+            ])],
+        })
+        self.assertTrue(no_accounting._is_internal())
+        self.assertTrue(no_accounting._has_group(GROUP_1))
+        self.assertFalse(
+            self.env['account.move'].with_user(no_accounting).has_access('read'),
+            "the control on the premise: this user cannot read journal entries",
+        )
+        with self.assertRaises(AccessError):
+            # The control that makes the guard load-bearing: counting would raise.
+            self.env['account.move'].with_user(no_accounting)._bill_approval_systray_counts()
+
+        self.assertEqual(self._served(no_accounting), {})
 
     def test_every_count_equals_the_list_its_own_row_opens(self):
         """Each count equals the action domain plus filter domain of the list it opens."""

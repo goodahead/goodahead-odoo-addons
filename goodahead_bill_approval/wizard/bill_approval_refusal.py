@@ -30,9 +30,9 @@ class BillApprovalRefusal(models.TransientModel):
     )
 
     @api.model
-    def default_get(self, fields):
-        # Parameter named `fields` as in core 19.0, so keyword callers keep working.
-        values = super().default_get(fields)
+    def default_get(self, fields_list):
+        # Parameter named `fields_list` as in core 18.0, so keyword callers keep working.
+        values = super().default_get(fields_list)
         # Opened with `default_move_id` from the button, or `active_id` from a server action.
         if not values.get('move_id') and self.env.context.get('active_model') == 'account.move':
             values['move_id'] = self.env.context.get('active_id')

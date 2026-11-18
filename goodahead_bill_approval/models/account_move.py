@@ -65,6 +65,7 @@ class _PaymentRefund(tuple):
     """The ids of the credit notes a done payment refund may post without approval."""
     __slots__ = ()
 
+
 # Fields only this module's actions may write. `readonly=True` is a client-side modifier, so
 # without `_bill_approval_guard_fields` anyone able to edit a bill could forge an approval.
 APPROVAL_WRITE_FIELDS = (
@@ -116,6 +117,7 @@ def queue_to_approve_domain(uid):
 def resolve_queue_domain(domain, uid):
     """A queue domain as a list, for the reader `uid`. The step 2 domains are functions."""
     return domain(uid) if callable(domain) else domain
+
 
 # Bills set to post themselves on their accounting date (by the user, or by `_post(soft=True)`
 # for future-dated moves) are not waiting for anyone, so they are left out of the to-post queue.
@@ -215,7 +217,7 @@ class AccountMove(models.Model):
         tracking=True,
         index='btree_not_null',
         domain=lambda self: [
-            ('all_group_ids', 'in', self.env.ref(GROUP_2).ids),
+            ('groups_id', 'in', self.env.ref(GROUP_2).ids),
             ('share', '=', False),
         ],
         help="The one person who may give approval step 2 on this document — or their "
@@ -358,8 +360,8 @@ class AccountMove(models.Model):
             raise AccessError(self.env._(
                 "You cannot choose who approves this document. The approver is chosen "
                 "by the users who hold an approval level — \"Bills: may review (step 1)\" "
-                "or \"Bills: may approve (step 2)\", ticked on their user record under "
-                "Settings > Users > Access Rights."
+                "or \"Bills: may approve (step 2)\", set on their user record under "
+                "Settings > Users > Access Rights > Accounting."
             ))
         for move in self:
             if not move._bill_approval_required():
@@ -637,7 +639,7 @@ class AccountMove(models.Model):
                 error=str(error) or type(error).__name__,
             ))
 
-    # ----------------------------------------------- telling the book keeper
+    # ------------------------------------------------ telling the bookkeeper
     #
     # When step 2 is given the reviewer gets an activity. The to-post queue and the systray
     # counter cover every case where no activity could be raised.
@@ -791,7 +793,8 @@ class AccountMove(models.Model):
         """Mark the post task done; posting is what the task asked for.
 
         Not `sudo()`: activity access also allows users with write access to the document.
-        `only_automated` stays True, so hand-made activities of this type are left alone.
+        Core only closes automated activities here, so hand-made ones of this type are left
+        alone.
         """
         self.activity_feedback([ACTIVITY_TYPE_XMLID], feedback=self.env._(
             "The bill was posted."))
@@ -803,11 +806,26 @@ class AccountMove(models.Model):
     # ----------------------------------------------------------- the systray
 
     @api.model
+    def bill_approval_systray_data(self):
+        """What the systray menu shows, fetched by it once per page load.
+
+        `{}` for external users, for users who cannot read journal entries and for users
+        holding neither level; the menu hides itself on an empty answer. Checked here and not
+        only by the group test, because a level can be given to someone without accounting
+        rights, and this runs on every page load.
+        """
+        if not self.env.user._is_internal():
+            return {}
+        if not self.browse().has_access('read'):
+            return {}
+        return self._bill_approval_systray_counts()
+
+    @api.model
     def _bill_approval_systray_counts(self):
         """Systray rows for the current user, or `{}` when they hold neither level.
 
         One row per queue the user can act on. Not `sudo()`, so each count equals the list it
-        opens. The result is a per-session snapshot (see `models/ir_http.py`).
+        opens. The result is a snapshot taken when the page loads.
         """
         rows = []
         for key, group, _filter_name, action_xmlid, domain in BILL_APPROVAL_QUEUES:
@@ -843,8 +861,9 @@ class AccountMove(models.Model):
             return
         raise AccessError(self.env._(
             "You cannot give approval %(level)s.\n\n"
-            "That level is held by users with the \"%(level)s\" checkbox ticked on "
-            "their user record, under Settings > Users > Access Rights. Ask an "
+            "That level is set on a user's record, under Settings > Users > Access "
+            "Rights > Accounting (\"Bill Review (step 1)\" and \"Bill Approval "
+            "(step 2)\"). Ask an "
             "administrator to grant it, or ask someone who holds it to approve "
             "this document.",
             level=level_label,
@@ -1006,16 +1025,16 @@ class AccountMove(models.Model):
     def _bill_approval_check_refuser(self):
         """Either level may refuse — refusing clears what either level gave.
 
-        A book keeper who spots their own mistake should not have to find the
-        director to undo it, and the director refusing is the ordinary case.
+        A bookkeeper who spots their own mistake should not have to find the
+        approver to undo it, and the approver refusing is the ordinary case.
         """
         if self.env.su or self.env.user._bill_approval_holds_a_level():
             return
         raise AccessError(self.env._(
             "You cannot refuse this document. Refusing clears the approvals already "
             "given, so it is held by the users who can give them: either bill "
-            "approval level, ticked on their user record under "
-            "Settings > Users > Access Rights."
+            "approval level, set on their user record under "
+            "Settings > Users > Access Rights > Accounting."
         ))
 
     def action_bill_approval_refuse(self):

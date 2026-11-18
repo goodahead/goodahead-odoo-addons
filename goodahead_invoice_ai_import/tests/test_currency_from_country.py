@@ -154,7 +154,7 @@ def _extract(data, lookup=_fake_lookup, active=_always_active):
 class TestCurrencyFromCountryRule(BaseCase):
     """The rule itself, without database or network."""
 
-    # -- the case that prompted the change -----------------------------------
+    # -- the main case --------------------------------------------------------
 
     def test_no_symbol_and_both_parties_in_the_same_country_resolves(self):
         """Bare amounts with both addresses in the US resolve to USD."""
@@ -272,10 +272,10 @@ class TestCurrencyFromCountryRule(BaseCase):
         with self.assertRaises(ClaudeExtractionError):
             _extract(data)
 
-    # -- the boundaries of the new field -------------------------------------
+    # -- the boundaries of the symbol field ----------------------------------
 
     def test_extraction_json_without_the_symbol_field_does_not_infer(self):
-        """An absent `currency_symbol` key (older stored JSON) is not the same
+        """An absent `currency_symbol` key (JSON stored without it) is not the same
         as null and must not trigger the rule."""
         data = _freight_extraction()
         data.pop(CURRENCY_SYMBOL_KEY)
@@ -366,7 +366,8 @@ class TestCurrencyFromCountryRule(BaseCase):
         self.assertIn(
             "Never take it from the currency, the language, or the other "
             "party's address", flat)
-        # The old "as printed" wording produced a null country.
+        # Asking for the country "as printed" yields null when no country
+        # name is printed.
         self.assertNotIn(
             "2-letter ISO code of the vendor's OWN address as printed", flat)
 

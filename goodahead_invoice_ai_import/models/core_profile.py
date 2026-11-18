@@ -1,14 +1,16 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Which of Odoo 19.0's two vendor-bill import pipelines is this core running?
+"""Is this core running the vendor-bill import pipeline this module hooks?
 
-Odoo 19.0 builds differ by a rewrite of the UBL vendor-bill import:
+Odoo has two UBL vendor-bill import pipelines:
 
-  * `search_plan` — `account.edi.ubl._ubl_import_invoice` drives an ordered
-    search plan of `res.partner._import_retrieve_customer_from_*` steps.
-  * `legacy` — older 19.0 builds: BIS 3.0 falls through to
+  * `legacy` — Odoo 18.0 (and early 19.0 builds): BIS 3.0 goes through
     `account.edi.common._import_partner` -> `res.partner._retrieve_partner`.
+    This is the one the 18.0 branch of this module supports.
+  * `search_plan` — newer 19.0 builds: `account.edi.ubl._ubl_import_invoice`
+    drives an ordered search plan of `res.partner._import_retrieve_customer_from_*`
+    steps. Only the 19.0 branch supports it; on 18.0 it is never detected.
 
 An override of a method a build does not have is a silent no-op, so the module
 must know which pipeline it is on. `hasattr` is useless (this module defines
@@ -63,11 +65,7 @@ _TRUTHY = frozenset({"true", "yes", "t", "y", "on", "1"})
 
 #: The core revisions this module has been verified against (informational;
 #: the probe is the enforcement).
-MEASURED_AGAINST = (
-    "search_plan: odoo/odoo 189df3538aa07d22f683008522b9143421f411a2 (2026-06-23); "
-    "legacy: odoo/odoo ca1f0aeae03399494a593baa798f11266a9fd113 (2026-01-17), "
-    "19.0 nightly deb 20260118"
-)
+MEASURED_AGAINST = "legacy: odoo/odoo 18.0 (66d9d8da3, 2025-12-10)"
 
 #: profile -> ((model, method, must_be_defined_by_core), ...)
 #:
@@ -95,7 +93,7 @@ PROFILE_MARKERS = {
         ("res.partner", "_import_retrieve_customer", False),
         # The live legacy chain (confirmatory only).
         ("account.edi.common", "_import_partner", True),
-        ("account.edi.common", "_import_lines", True),
+        ("account.edi.common", "_import_invoice_lines", True),
         ("account.edi.common", "_import_product", True),
         ("res.partner", "_retrieve_partner", True),
         ("res.partner", "_retrieve_partner_with_name", True),
@@ -272,8 +270,8 @@ class AccountMove(models.Model):
         """Set `account_edi_ubl_cii.disable_pdf_in_xml` — but only on a core
         that reads it. Returns the value written, or None when nothing was.
 
-        Shared by `post_init_hook` (install) and the 19.0.3.1.0 migration
-        (upgrade), each of which runs once per database, so an administrator who
+        Shared by `post_init_hook` (install) and an upgrade migration, each of
+        which runs once per database, so an administrator who
         later turns the switch off keeps it off. Later core changes are handled
         by `_ai_reassert_substitute_pdf_policy`.
         """
@@ -281,8 +279,8 @@ class AccountMove(models.Model):
             _logger.info(
                 "AI invoice import: this core does not read %s (no %s.%s in %s), "
                 "so it is left unset. The vendor's own PDF is still made the "
-                "bill's main attachment before the decoder runs, which is the "
-                "half of this fix that travels.",
+                "bill's main attachment before the decoder runs, which does "
+                "not depend on this parameter.",
                 SUBSTITUTE_PDF_PARAM,
                 SUBSTITUTE_PDF_READER[0],
                 SUBSTITUTE_PDF_READER[1],
@@ -377,8 +375,9 @@ class AccountMove(models.Model):
     def _ai_clear_stray_substitute_pdf_param(self):
         """Undo a `True` this module wrote on a core that cannot read it.
 
-        Earlier versions wrote the parameter on cores that do not read it,
-        leaving a row that looks like a decision but does nothing. Only a truthy
+        Earlier versions of this module could write the parameter on cores
+        that do not read it, leaving a row that looks like a decision but does
+        nothing. Only a truthy
         value is cleared, and only on a non-reading core. An xmlid-owned record
         is reset to core's default rather than deleted, to avoid a dangling
         `ir_model_data` row.

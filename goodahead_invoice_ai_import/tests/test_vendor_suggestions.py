@@ -250,8 +250,8 @@ class TestWhatIsNeverAutomatic(_SuggestionCase):
 
     A changed bank account is the classic invoice-fraud vector. Scope: these
     tests cover `_ai_apply_vendor_data` only; core's UBL decoder creates the
-    vendor's `res.partner.bank` itself (`_find_or_create_bank_account`) before
-    this code runs.
+    vendor's `res.partner.bank` itself (`account.edi.common._import_partner_bank`)
+    before this code runs.
     """
 
     @classmethod
@@ -380,7 +380,7 @@ class TestTheNearDuplicateNames(_SuggestionCase):
         )
 
     # The vendor name here is a substring of the agency's name. Core's name
-    # step must not match on a substring (older 19.0 builds used `ilike`), or
+    # step must not match on a substring (the legacy core uses `ilike`), or
     # the bill is silently filed against the agency and the candidate flow
     # never runs. See also test_legacy_name_slot.
     def test_picking_a_candidate_once_teaches_the_matcher(self):

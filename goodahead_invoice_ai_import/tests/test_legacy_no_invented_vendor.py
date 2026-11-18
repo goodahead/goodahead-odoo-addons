@@ -10,7 +10,7 @@ Suppression also keeps `partner_id` empty, which is what enables the
 unrecognised-vendor note and candidate cards.
 
 Controls: without the context key core still creates; a matching vendor still comes
-back with core's address filling; the search-plan build never enters the seam.
+back unchanged; the search-plan build never enters the seam.
 """
 
 from unittest.mock import patch
@@ -144,7 +144,7 @@ class _SuppressionHarness(TransactionCase):
             "phone": "+49 30 5550199",
             "email": "ap@zz-never-invented.example",
             "vat": UNKNOWN_VAT,
-            "postal_address": {"country_code": "DE", "city": "Berlin"},
+            "country_code": "DE", "city": "Berlin",
         }
         vals.update(overrides)
         edi = self.EdiCommon.with_context(ai_invoice_import=True) if ours else self.EdiCommon
@@ -293,8 +293,9 @@ class TestTheLegacyCreateIsSuppressed(_SuppressionHarness):
         self.assertEqual(partner, vendor)
         self.assertEqual(self._partner_count(), before)
 
-    def test_a_matched_vendor_still_gets_cores_address_filling(self):
-        """Core still fills an empty address from the document after a match."""
+    def test_a_matched_vendor_is_returned_unchanged(self):
+        """On a match, core's result comes back as is: 18.0 core does not touch
+        an existing vendor's address, and neither does this override."""
         vendor = self.Partner.create(
             {"name": UNKNOWN_NAME, "is_company": True, "vat": UNKNOWN_VAT}
         )
@@ -302,8 +303,8 @@ class TestTheLegacyCreateIsSuppressed(_SuppressionHarness):
         partner, _logs = self._import_partner()
 
         self.assertEqual(partner, vendor)
-        self.assertEqual(partner.city, "Berlin")
-        self.assertEqual(partner.country_id, self.env.ref("base.de"))
+        self.assertFalse(partner.city)
+        self.assertFalse(partner.country_id)
 
     def test_a_vendor_reachable_only_by_its_peppol_pair_still_matches(self):
         """A vendor reachable only through its Peppol EAS/endpoint is still found.
@@ -340,7 +341,8 @@ class TestTheLegacyCreateIsSuppressed(_SuppressionHarness):
 
         self.assertFalse(partner)
         self.assertEqual(self._partner_count(), before)
-        self.assertIn("Could not retrieve partner with details", " ".join(logs))
+        # 18.0 core logs only when it creates a partner.
+        self.assertEqual(logs, [])
 
 
 @skip_unless_profile(PROFILE_SEARCH_PLAN)

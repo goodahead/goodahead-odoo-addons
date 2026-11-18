@@ -1,5 +1,18 @@
 # Changelog
 
+## 18.0.1.5.0
+
+- Backport to Odoo 18.0, with the same features as 19.0.1.5.0.
+- The two levels are set on the user form under Access Rights > Accounting ("Bill Review
+  (step 1)", "Bill Approval (step 2)"): each group has a category of its own, which is how
+  18.0 shows a group outside developer mode and keeps it through the form's onchange.
+- The systray menu fetches its counts with one call after the page has loaded
+  (`account.move.bill_approval_systray_data`), as 18.0 has no lazy session values. Users
+  who cannot read journal entries get nothing, and a failing call never shows an error.
+- The substitute field sits on its own line on My Preferences.
+
+The entries below describe the 19.0 versions this backport is based on.
+
 ## 19.0.1.5.0
 
 - A customer credit note that records a completed, provider-confirmed payment refund (e.g. a card

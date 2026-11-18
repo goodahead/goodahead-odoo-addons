@@ -122,7 +122,7 @@ class TestCreditMemoBank(TransactionCase):
             "extracted": extracted,
             "usage": {"input_tokens": 10, "output_tokens": 20},
             "model_name": "test-model",
-            # The real entry point, so the IBAN checksum runs as in production.
+            # The real entry point, so the IBAN checksum runs as in a real import.
             "xml_bytes": self.env["account.move"]._ai_generate_ubl_from_extracted(
                 extracted, self.company
             ),
@@ -250,6 +250,62 @@ class TestCreditMemoBank(TransactionCase):
         )
         self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
 
+    def test_the_import_note_does_not_trigger_cores_attachment_decode(self):
+        """The token-usage note carries `extraction.json`; on 18.0 posting an
+        attachment makes core try to decode it into the bill, and core then
+        says the bill "already contains lines". That note must not appear."""
+        move = self._import(self._extracted(doc_type="Invoice"))
+
+        bodies = " ".join(move.message_ids.mapped("body"))
+        self.assertIn("Imported via AI invoice extraction", bodies)
+        self.assertNotIn("already contains lines", bodies)
+
+    def test_a_genuine_e_invoice_keeps_cores_bank_handling(self):
+        """Without the AI marker, `_import_partner_bank` is core's: a vendor
+        with a portal login still gets its IBAN recorded and stated."""
+        self.env["res.users"].create(
+            {
+                "name": "ZZ Vendor Portal",
+                "login": "zz-vendor-portal-bank",
+                "partner_id": self.vendor.id,
+                "groups_id": [(6, 0, [self.env.ref("base.group_portal").id])],
+            }
+        )
+        self.Bank.with_context(active_test=False).search(
+            [("partner_id", "=", self.vendor.id)]
+        ).unlink()
+        move = self.env["account.move"].create(
+            {"move_type": "in_invoice", "partner_id": self.vendor.id}
+        )
+
+        self.env["account.edi.xml.ubl_bis3"]._import_partner_bank(move, [VENDOR_IBAN])
+
+        self.assertEqual(move.partner_bank_id.sanitized_acc_number, VENDOR_IBAN)
+        self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
+
+    def test_an_iban_held_by_an_employee_is_not_copied_onto_the_vendor(self):
+        """Only stray copies on our own company partner are ignored. A number
+        another person holds (here an employee) keeps core's refusal: the bill
+        gets no account and none is created on the vendor."""
+        employee = self.env["res.partner"].create({"name": "ZZ Employee"})
+        self.env["res.users"].create(
+            {"login": "zz-employee-iban", "name": "ZZ Employee", "partner_id": employee.id}
+        )
+        self.Bank.create({"acc_number": VENDOR_IBAN, "partner_id": employee.id})
+        self.Bank.with_context(active_test=False).search(
+            [("partner_id", "=", self.vendor.id)]
+        ).unlink()
+
+        move = self._import(self._extracted(doc_type="Invoice"))
+
+        self.assertFalse(move.partner_bank_id)
+        self.assertFalse(
+            self.Bank.with_context(active_test=False).search(
+                [("partner_id", "=", self.vendor.id)]
+            ),
+            "an IBAN someone else holds must not be created on the vendor",
+        )
+
     # ------------------------------------------------------------------
     # The search-plan decoder's hook, called directly
     # ------------------------------------------------------------------
@@ -336,11 +392,11 @@ class TestCreditMemoBank(TransactionCase):
         )
 
     # ------------------------------------------------------------------
-    # The older decoder's hook
+    # The legacy decoder's hook
     #
-    # Older 19.0 builds resolve the bank through
-    # ``account.edi.common._import_partner_bank``. Newer cores still have it
-    # (Factur-X and UBL 2.0 reach it), so these run on either core.
+    # Odoo 18.0 (the legacy pipeline) resolves the bank through
+    # ``account.edi.common._import_partner_bank``. Search-plan cores still have
+    # it (Factur-X and UBL 2.0 reach it), so these run on either pipeline.
     # ------------------------------------------------------------------
 
     def _refund(self, move_type="in_refund"):
@@ -365,7 +421,7 @@ class TestCreditMemoBank(TransactionCase):
         self.assertNotEqual(refund.partner_bank_id, vendor_bank)
 
     def test_older_hook_leaves_an_archived_company_row_archived(self):
-        """The older core would un-archive a matching row on the company partner."""
+        """Core alone would un-archive a matching row on the company partner."""
         archived = self.Bank.create(
             {"acc_number": VENDOR_IBAN, "partner_id": self.company.partner_id.id}
         )

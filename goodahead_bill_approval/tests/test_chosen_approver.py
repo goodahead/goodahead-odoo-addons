@@ -17,7 +17,7 @@ from odoo.tests import tagged
 from odoo.tools.safe_eval import safe_eval
 
 from ..models.account_move import APPROVE_ACTIVITY_TYPE_XMLID
-from .common import GROUP_1, GROUP_2, BillApprovalCommon
+from .common import GROUP_2, BillApprovalCommon
 
 
 @tagged('post_install', '-at_install')
@@ -37,9 +37,10 @@ class TestChosenApprover(BillApprovalCommon):
             return cls.env['res.users'].create({
                 'name': name,
                 'login': login,
+                'email': '%s@example.com' % login,
                 'company_id': cls.company.id,
                 'company_ids': [Command.set([cls.company.id])],
-                'group_ids': base_groups,
+                'groups_id': base_groups,
             })
 
         cls.other_director = approver('BA-C second director', 'ba_c_director_2')

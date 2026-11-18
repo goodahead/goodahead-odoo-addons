@@ -1,5 +1,9 @@
 # Changelog
 
+## 18.0.1.4.0
+
+- First release for Odoo 18.0, with the same features as 19.0.1.4.0 (listed below).
+
 ## 19.0.1.4.0
 
 - `messages_create`, `_resolve_model` and `_fallback_model` take an optional `requires_pdf`

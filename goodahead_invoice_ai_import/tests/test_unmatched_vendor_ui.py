@@ -471,6 +471,48 @@ class TestTheCreateContactButton(_UnmatchedHarness):
             "a bank account is NEVER written automatically",
         )
 
+    def test_a_tax_id_the_vat_check_refuses_does_not_block_the_contact(self):
+        """A Canadian business number is not a VAT number to ``base_vat``.
+
+        The contact is still created, without the tax id; the number waits
+        as a suggestion and the chatter says why it was not stored.
+        """
+        if not self.env["ir.module.module"].search_count(
+            [("name", "=", "base_vat"), ("state", "=", "installed")]
+        ):
+            self.skipTest("base_vat is not installed")
+        move = self._run_import(
+            name="ZZ Canadian Contractor",
+            vat="3225301672",
+            country_code="CA",
+            city="Toronto",
+            postal_code="M5V 2T6",
+        )
+
+        move.action_ai_create_vendor_from_extraction()
+
+        vendor = move.partner_id
+        self.assertTrue(vendor, "the contact is created despite the tax id")
+        self.assertEqual(vendor.name, "ZZ Canadian Contractor")
+        self.assertEqual(vendor.country_id, self.env.ref("base.ca"))
+        self.assertFalse(vendor.vat, "a refused tax id is not stored")
+        suggestion = self.env["goodahead.vendor.data.suggestion"].search(
+            [("partner_id", "=", vendor.id), ("field_name", "=", "vat")]
+        )
+        self.assertEqual(suggestion.invoice_value, "3225301672")
+        self.assertTrue(
+            any("3225301672" in body for body in move.message_ids.mapped("body")),
+            "the chatter names the tax id that was not stored",
+        )
+
+    def test_control_a_valid_tax_id_is_stored_on_the_new_contact(self):
+        """Control: a tax id the VAT check accepts is stored."""
+        move = self._run_import(vat="DE123456788")
+
+        move.action_ai_create_vendor_from_extraction()
+
+        self.assertEqual(move.partner_id.vat, "DE123456788")
+
     def test_it_learns_the_identifiers_so_the_next_bill_matches_itself(self):
         """The new contact gets phone and domain identifiers."""
         move = self._run_import()

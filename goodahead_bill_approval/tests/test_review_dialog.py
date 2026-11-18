@@ -26,9 +26,10 @@ class TestReviewDialog(BillApprovalCommon):
         cls.other_director = cls.env['res.users'].create({
             'name': 'BA-D second director',
             'login': 'ba_d_director_2',
+            'email': 'ba_d_director_2@example.com',
             'company_id': cls.company.id,
             'company_ids': [Command.set([cls.company.id])],
-            'group_ids': [
+            'groups_id': [
                 Command.link(cls.env.ref('base.group_user').id),
                 Command.link(cls.env.ref('account.group_account_invoice').id),
                 Command.link(cls.env.ref(GROUP_2).id),
@@ -193,4 +194,4 @@ class TestReviewDialog(BillApprovalCommon):
         self.assertEqual(action.binding_model_id.model, 'account.move')
         self.assertEqual(action.binding_view_types, 'list')
         self.assertEqual(
-            action.group_ids, self.env.ref('goodahead_bill_approval.group_bill_approval_1'))
+            action.groups_id, self.env.ref('goodahead_bill_approval.group_bill_approval_1'))
