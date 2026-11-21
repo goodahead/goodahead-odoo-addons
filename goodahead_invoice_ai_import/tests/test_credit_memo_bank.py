@@ -16,7 +16,9 @@ from odoo.addons.goodahead_invoice_ai_import.models.account_move import (
     iban_checksum_fails,
 )
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+    PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import skip_method_unless_profile
@@ -283,20 +285,44 @@ class TestCreditMemoBank(TransactionCase):
         self.assertEqual(move.partner_bank_id.sanitized_acc_number, VENDOR_IBAN)
         self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
 
-    def test_an_iban_held_by_an_employee_is_not_copied_onto_the_vendor(self):
-        """Only stray copies on our own company partner are ignored. A number
-        another person holds (here an employee) keeps core's refusal: the bill
-        gets no account and none is created on the vendor."""
+    def _import_with_the_iban_held_by_an_employee(self):
         employee = self.env["res.partner"].create({"name": "ZZ Employee"})
         self.env["res.users"].create(
             {"login": "zz-employee-iban", "name": "ZZ Employee", "partner_id": employee.id}
         )
-        self.Bank.create({"acc_number": VENDOR_IBAN, "partner_id": employee.id})
+        employee_row = self.Bank.create(
+            {"acc_number": VENDOR_IBAN, "partner_id": employee.id}
+        )
         self.Bank.with_context(active_test=False).search(
             [("partner_id", "=", self.vendor.id)]
         ).unlink()
+        return self._import(self._extracted(doc_type="Invoice")), employee_row
 
-        move = self._import(self._extracted(doc_type="Invoice"))
+    def test_a_bill_never_states_an_account_held_by_an_employee(self):
+        """Whatever the build, the bill is never paid into the employee's row."""
+        move, employee_row = self._import_with_the_iban_held_by_an_employee()
+
+        self.assertNotEqual(move.partner_bank_id, employee_row)
+        self.assertEqual(employee_row.partner_id.name, "ZZ Employee")
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_an_iban_held_by_an_employee_is_recorded_on_the_vendor_on_18_search_plan(
+        self,
+    ):
+        """18.0 builds from April 2026 on look the number up among the vendor's
+        own accounts only, and create it there when missing (as 19.0 does)."""
+        move, _employee_row = self._import_with_the_iban_held_by_an_employee()
+
+        self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
+        self.assertEqual(move.partner_bank_id.sanitized_acc_number, VENDOR_IBAN)
+
+    @skip_method_unless_profile(PROFILE_LEGACY)
+    def test_an_iban_held_by_an_employee_is_not_copied_onto_the_vendor(self):
+        """Only stray copies on our own company partner are ignored. On the
+        legacy build a number another person holds (here an employee) keeps
+        core's refusal: the bill gets no account and none is created on the
+        vendor."""
+        move, _employee_row = self._import_with_the_iban_held_by_an_employee()
 
         self.assertFalse(move.partner_bank_id)
         self.assertFalse(
@@ -323,7 +349,7 @@ class TestCreditMemoBank(TransactionCase):
 
     # `_import_ubl_retrieve_partner_bank` does not exist on the legacy build, so
     # these are gated per method; the `test_older_hook_*` tests run on both.
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_new_hook_records_the_iban_on_the_vendor(self):
         """The supplier's account goes on the supplier."""
         collected = self._collected()
@@ -344,7 +370,7 @@ class TestCreditMemoBank(TransactionCase):
             "the vendor's IBAN belongs on the vendor",
         )
 
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_new_hook_states_no_account_on_a_received_credit_note(self):
         """``partner_bank_id`` is left to the compute, which picks the company's account."""
         collected = self._collected()
@@ -357,7 +383,7 @@ class TestCreditMemoBank(TransactionCase):
         )
         self.assertFalse(collected["partner_bank_values"]["partner_banks"])
 
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_new_hook_leaves_an_ordinary_bill_to_core(self):
         """Only ``in_refund`` is diverted; bills keep core's behaviour."""
         collected = self._collected(move_type="in_invoice")
@@ -369,7 +395,7 @@ class TestCreditMemoBank(TransactionCase):
             "a bill we pay must still state the vendor's account",
         )
 
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_new_hook_reads_the_partner_from_customer_values(self):
         """The hook reads the partner from ``customer_values['customer']``.
 

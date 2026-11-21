@@ -138,6 +138,16 @@ class TestTheBillCarriesThePdfLinesOnly(TransactionCase):
             ]
         ).active = False
 
+    def setUp(self):
+        super().setUp()
+        # 18.0 builds from April 2026 on cache tax lookups on the cursor
+        # (`cr.cache['retrieved_tax_map']`), which every test of this class
+        # shares: a "no 8.89% tax" answer from one test would hide the tax a
+        # later test creates. Not present on other builds.
+        cache = getattr(self.env.cr, "cache", None)
+        if isinstance(cache, dict):
+            cache.pop("retrieved_tax_map", None)
+
     def _reimport(self, extracted, move_type="in_invoice"):
         """Run the re-import button on a failed import with the JSON stored."""
         att = self.env["ir.attachment"].create(

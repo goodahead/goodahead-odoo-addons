@@ -23,6 +23,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
 )
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .posting import post_bill
@@ -335,7 +336,7 @@ class TestVendorIdentifierMatching(_NoClaudeMixin, TransactionCase):
     # ------------------------------------------------------------------
 
     # There is no search plan on the legacy core.
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_the_new_steps_are_in_the_plan_in_the_right_place(self):
         """Position is the decision, not the presence. Below core's exact
         identity keys, above core's SUBSTRING name match."""

@@ -9,7 +9,7 @@
         "bills. Claude reads the PDF; the result is checked and imported through "
         "Odoo's own UBL importer. Features and setup: see README.md in the module."
     ),
-    "version": "18.0.3.33.0",
+    "version": "18.0.3.34.0",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

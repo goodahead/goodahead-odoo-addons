@@ -26,6 +26,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
 )
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import skip_method_unless_profile
@@ -149,10 +150,11 @@ class TestPeppolEndpoint(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_core_would_have_rejected_the_old_pair(self):
-        """Control: the search-plan core rejects a Finnish VAT under the Belgian scheme.
+        """Control: the 19.0 search-plan core rejects a Finnish VAT under the
+        Belgian scheme.
 
-        The legacy core lacks the per-scheme character rule and would accept the
-        pair silently, so the test is gated.
+        18.0 cores (both builds) lack the per-scheme character rule and would
+        accept the pair silently, so the test is gated.
         """
         error = self.Partner._build_error_peppol_endpoint("9925", "FI23456780")
         self.assertTrue(
@@ -299,21 +301,37 @@ class TestPeppolEndpoint(TransactionCase):
         )
 
     def test_our_validator_agrees_with_cores(self):
-        """`peppol_endpoint_is_valid` agrees with core for every scheme we emit.
+        """`peppol_endpoint_is_valid` never accepts what core rejects, for every
+        scheme we emit, and accepts a plain 10-digit number wherever core does.
 
-        It reimplements only core's character/length checks, which holds while no
-        VAT scheme carries extra format rules. The probe is sanitised per scheme first.
+        It reimplements core's character/length checks and the per-scheme format
+        rules core has on its newest build. It may be stricter than an older
+        core (that only drops an endpoint), never looser. Probes are sanitised
+        per scheme first.
         """
         for country in EAS_MAPPING:
             for eas in vat_peppol_eas_codes(country):
-                probe = sanitize_peppol_endpoint("AB1234567890", eas)
-                with self.subTest(country=country, eas=eas):
-                    self.assertEqual(
-                        bool(self.Partner._build_error_peppol_endpoint(eas, probe)),
-                        not peppol_endpoint_is_valid(eas, probe),
-                        f"core and this module disagree about EAS {eas} "
-                        f"({country}); core's rules have moved",
+                for raw in ("AB1234567890", "1234567890"):
+                    probe = sanitize_peppol_endpoint(raw, eas)
+                    core_rejects = bool(
+                        self.Partner._build_error_peppol_endpoint(eas, probe)
                     )
+                    ours_accepts = peppol_endpoint_is_valid(eas, probe)
+                    with self.subTest(country=country, eas=eas, probe=probe):
+                        if core_rejects:
+                            self.assertFalse(
+                                ours_accepts,
+                                f"this module would emit an EAS {eas} endpoint "
+                                f"({country}) that core rejects; core's rules "
+                                "have moved",
+                            )
+                        if raw == "1234567890":
+                            self.assertEqual(
+                                ours_accepts,
+                                not core_rejects,
+                                f"core and this module disagree about a plain "
+                                f"10-digit EAS {eas} endpoint ({country})",
+                            )
 
     def test_the_validator_can_still_say_no(self):
         """Control: the validator rejects invalid endpoints."""

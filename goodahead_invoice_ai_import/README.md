@@ -213,7 +213,8 @@ without it.
 Each step is explained in more detail, with the reasons, in [docs/SETUP.md](docs/SETUP.md).
 
 1. **Install the dependencies.**
-   - Odoo 18.0. Community is enough.
+   - Odoo 18.0. Community is enough. Both 18.0 import builds are supported: before
+     and after Odoo's April 2026 rework of the UBL bill import.
    - [OCA/queue](https://github.com/OCA/queue) `queue_job`.
    - `goodahead_claude` from this repository.
    - Python `requests`.

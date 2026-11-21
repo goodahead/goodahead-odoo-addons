@@ -14,6 +14,7 @@ from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import skip_method_unless_profile
@@ -135,7 +136,7 @@ class TestVendorMatching(TransactionCase):
 
     # The legacy build has no search plan; its ordering is covered by
     # `test_legacy_name_slot.TestTheNameSlotAdapter`.
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_business_id_step_is_in_the_plan_before_name(self):
         """The business-id step sits after the exact keys and before the name match.
 

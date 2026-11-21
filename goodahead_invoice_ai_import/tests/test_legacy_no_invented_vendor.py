@@ -23,6 +23,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import skip_method_unless_profile, skip_unless_profile
@@ -345,7 +346,7 @@ class TestTheLegacyCreateIsSuppressed(_SuppressionHarness):
         self.assertEqual(logs, [])
 
 
-@skip_unless_profile(PROFILE_SEARCH_PLAN)
+@skip_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
 @tagged("post_install", "-at_install")
 class TestTheLegacySuppressionIsInertOnTheSearchPlanBuild(_SuppressionHarness):
     """A real import on the search-plan build never calls `_import_partner`."""

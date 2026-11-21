@@ -10,16 +10,19 @@ _logger = logging.getLogger(__name__)
 
 
 class AccountEdiUbl(models.AbstractModel):
-    """Hooks of the search-plan UBL import pipeline (newer 19.0 builds).
+    """Hooks of the search-plan UBL import pipeline.
 
-    Inert on Odoo 18.0: nothing in 18.0 core calls these methods. They stay so
-    the 18.0 and 19.0 branches share the same model code and tests (the
-    search-plan tests are skipped on 18.0).
+    Live on newer 19.0 builds and on 18.0 builds from April 2026 on (odoo/odoo
+    ``86463ce1d`` backported the pipeline); inert on older 18.0 builds, where
+    nothing in core calls them.
 
-    Newer builds route ``account.edi.xml.ubl_bis3`` through
+    Those builds route ``account.edi.xml.ubl_bis3`` through
     ``account.edi.ubl._ubl_import_invoice``, which resolves partners and
-    products through search plans instead of ``account.edi.common``. Older
-    builds use the hooks in ``account_edi_common.py``.
+    products through search plans instead of ``account.edi.common``'s legacy
+    methods. Older builds use the hooks in ``account_edi_common.py``. On 18.0
+    the product plan is built by ``account.edi.common`` instead, so
+    ``_import_ubl_retrieve_products_search_plan`` below is 19.0-only and the
+    18.0 equivalent lives in ``account_edi_common.py``.
     """
 
     _inherit = "account.edi.ubl"

@@ -14,7 +14,10 @@ _logger = logging.getLogger(__name__)
 class AccountEdiCommon(models.AbstractModel):
     """Partner, bank and product hooks of Odoo 18.0's UBL import.
 
-    Every UBL and Factur-X document is imported through this model in 18.0.
+    On 18.0 builds before April 2026 every UBL and Factur-X document is
+    imported through this model's legacy methods. Later 18.0 builds import UBL
+    through the search plan (``account_edi_ubl.py``) and only take the product
+    plan from here (``_import_retrieve_products_search_plan``).
     """
 
     _inherit = "account.edi.common"
@@ -204,6 +207,45 @@ class AccountEdiCommon(models.AbstractModel):
                 to_create.append({"acc_number": number, "partner_id": partner.id})
         if to_create:
             invoice.partner_bank_id = Bank.create(to_create)[0]
+
+    def _import_retrieve_products_search_plan(self, collected_values):
+        """Stop a vendor's article code from matching our internal reference,
+        on 18.0 builds from April 2026 on.
+
+        Those builds import UBL through the search-plan pipeline (see
+        ``account_edi_ubl.py``), but build the product plan here and have no
+        supplierinfo step. For a purchase with a known vendor the plan becomes
+        our vendor-scoped supplierinfo step, then barcode: the same narrowing
+        as ``account.edi.ubl._import_ubl_retrieve_products_search_plan`` on
+        19.0. Core would otherwise match the vendor's code against our own
+        ``default_code`` and fall through to a name match. Finding nothing is
+        the correct answer; a supplierinfo row fixes it for every later bill.
+
+        AI imports only, as on older 18.0 builds: a genuine supplier e-invoice
+        keeps core's product lookup. (On 19.0 the narrowing applies to every
+        purchase document.)
+
+        Older 18.0 builds do not have this method; there, the narrowing is done
+        by ``_import_invoice_lines`` and ``product.product._retrieve_product``.
+        """
+        plan = super()._import_retrieve_products_search_plan(collected_values)
+
+        if not self.env.context.get("ai_invoice_import"):
+            return plan
+        if collected_values.get("odoo_document_type") != "purchase":
+            return plan
+
+        # Resolved earlier by `_import_ubl_retrieve_customer`. Without a vendor
+        # our supplierinfo step would decline, so the plan is left as is.
+        vendor = (collected_values.get("customer_values") or {}).get("customer")
+        if not vendor:
+            return plan
+
+        ProductProduct = self.env["product.product"]
+        return [
+            ProductProduct._import_retrieve_product_from_ai_supplierinfo,
+            ProductProduct._import_retrieve_product_from_barcode,
+        ]
 
     def _import_invoice_lines(self, invoice, tree, xpath, qty_factor):
         """Put the vendor on the context so product matching can be narrowed to it.

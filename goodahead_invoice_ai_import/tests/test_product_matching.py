@@ -4,9 +4,12 @@
 """Product matching narrowed for purchase documents with a known vendor.
 
 When the vendor is known, product matching is narrowed to supplierinfo and
-barcode, dropping core's `default_code` and `name` steps. On Odoo 18.0 this is
-`product.product._retrieve_product` (see `models/product_product.py`), fed by
-the vendor context `account.edi.common._import_invoice_lines` sets.
+barcode, dropping core's `default_code` and `name` steps. On Odoo 18.0 builds
+before April 2026 this is `product.product._retrieve_product` (see
+`models/product_product.py`), fed by the vendor context
+`account.edi.common._import_invoice_lines` sets. On later 18.0 builds it is
+`account.edi.common._import_retrieve_products_search_plan` with this module's
+own supplierinfo step; on 19.0, `_import_ubl_retrieve_products_search_plan`.
 
 The discriminating case is the fall-through: a vendor code with no supplierinfo
 row that equals the internal reference of an unrelated product of ours. The two
@@ -27,6 +30,7 @@ from odoo.addons.account_edi_ubl_cii.models.account_edi_ubl import (
 )
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import skip_method_unless_profile
@@ -192,6 +196,135 @@ class TestProductMatching(TransactionCase):
             }
         )
         self.assertIn("_import_retrieve_product_from_default_code", names)
+
+    # ------------------------------------------------------------------
+    # 18.0 from April 2026 on: the plan is built by `account.edi.common`
+    # ------------------------------------------------------------------
+
+    def _plan_names_18(self, collected_values, ours=True):
+        values = {"company": self.company, **collected_values}
+        edi = self.env["account.edi.xml.ubl_bis3"]
+        if ours:
+            edi = edi.with_context(ai_invoice_import=True)
+        return [
+            getattr(step, "__name__", "")
+            for step in edi._import_retrieve_products_search_plan(values)
+        ]
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_18_plan_is_untouched_on_somebody_else_s_document(self):
+        """A genuine supplier e-invoice keeps core's product lookup on 18.0."""
+        names = self._plan_names_18(
+            {
+                "odoo_document_type": "purchase",
+                "customer_values": {"customer": self.vendor},
+            },
+            ours=False,
+        )
+        self.assertIn("_import_retrieve_product_from_default_code", names)
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_18_plan_is_our_supplierinfo_and_barcode_only(self):
+        names = self._plan_names_18(
+            {
+                "odoo_document_type": "purchase",
+                "customer_values": {"customer": self.vendor},
+            }
+        )
+        self.assertEqual(
+            names,
+            [
+                "_import_retrieve_product_from_ai_supplierinfo",
+                "_import_retrieve_product_from_barcode",
+            ],
+            "18.0 has no supplierinfo step of its own, so ours stands in for "
+            "it, followed by barcode",
+        )
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_18_plan_is_untouched_without_a_vendor(self):
+        names = self._plan_names_18(
+            {"odoo_document_type": "purchase", "customer_values": {}}
+        )
+        self.assertIn("_import_retrieve_product_from_default_code", names)
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_18_plan_is_untouched_on_a_sale_document(self):
+        names = self._plan_names_18(
+            {
+                "odoo_document_type": "sale",
+                "customer_values": {"customer": self.vendor},
+            }
+        )
+        self.assertIn("_import_retrieve_product_from_default_code", names)
+
+    def _step(self, partner, default_code=None, barcode=None):
+        return self.env["product.product"]._import_retrieve_product_from_ai_supplierinfo(
+            {
+                "default_code": default_code,
+                "barcode": barcode,
+                "invoice_predictive": {"partner": partner},
+            }
+        )
+
+    def test_our_supplierinfo_step_is_row_scoped_to_the_line_s_vendor(self):
+        """The step reads the vendor core put on the line and scopes vendor and
+        code to one supplierinfo row. Portable: it is our own method."""
+        contact = self.env["res.partner"].create(
+            {"name": "ZZ Product Vendor AP", "parent_id": self.vendor.id}
+        )
+        self.assertEqual(
+            self._step(contact, default_code=MAPPED_CODE),
+            {
+                "criteria": [
+                    {
+                        "domain": self.env[
+                            "product.product"
+                        ]._ai_vendor_supplierinfo_domain(
+                            self.vendor.id, (MAPPED_CODE, None)
+                        )
+                    }
+                ]
+            },
+            "a child contact is scoped to its commercial partner's rows",
+        )
+
+    def test_our_supplierinfo_step_declines_without_a_vendor_or_a_code(self):
+        self.assertEqual(self._step(self.env["res.partner"], MAPPED_CODE), {})
+        self.assertEqual(self._step(None, MAPPED_CODE), {})
+        self.assertEqual(self._step(self.vendor), {})
+
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_18_control_core_alone_would_have_picked_the_decoy(self):
+        """With the override disabled, 18.0 core's real plan picks the decoy."""
+        Bis3 = type(self.env["account.edi.xml.ubl_bis3"])
+        unnarrowed = (
+            lambda self, collected_values: (  # noqa: E731
+                CoreAccountEdiCommon._import_retrieve_products_search_plan(
+                    self, collected_values
+                )
+            )
+        )
+
+        with patch.object(Bis3, "_import_retrieve_products_search_plan", unnarrowed):
+            self.assertIn(
+                "_import_retrieve_product_from_default_code",
+                self._plan_names_18(
+                    {
+                        "odoo_document_type": "purchase",
+                        "customer_values": {"customer": self.vendor},
+                    }
+                ),
+                "the patch did not take effect, so this is not a control at all",
+            )
+            move = self._decode(self._extracted(UNMAPPED_CODE))
+
+        self.assertEqual(
+            self._product_on_line(move),
+            self.decoy,
+            "control failed: core's own plan did not pick the decoy, so the "
+            "discriminating test was not exercising the collision on this build",
+        )
 
     # ------------------------------------------------------------------
     # `_retrieve_product`, called directly
@@ -397,10 +530,10 @@ class TestProductMatching(TransactionCase):
 
         self.assertEqual(self._vendor_seen_by_import_lines(move), self.vendor.id)
 
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_the_context_key_changes_nothing_on_this_build(self):
-        """On the search-plan build the context key has no effect on core's
-        `_retrieve_product`. (Never runs on 18.0.)
+        """On the search-plan builds the context key has no effect on core's
+        `_retrieve_product`.
         """
         self.assertEqual(
             self._retrieve(default_code=UNMAPPED_CODE), self.decoy,

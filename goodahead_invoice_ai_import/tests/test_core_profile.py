@@ -3,9 +3,10 @@
 
 """Detection of which core import pipeline this module is running on.
 
-Odoo has two UBL vendor-bill import pipelines: `legacy` (Odoo 18.0 and early
-19.0 builds) and `search_plan` (newer 19.0 builds). The model code carries hooks
-for both; on 18.0 only `legacy` is ever detected. A plain `hasattr` check is
+Odoo has two UBL vendor-bill import pipelines in three builds: `legacy` (Odoo
+18.0 before April 2026 and early 19.0 builds), `search_plan` (newer 19.0
+builds) and `search_plan_18` (18.0 from April 2026 on). The model code carries
+hooks for all three; on 18.0 `search_plan` is never detected. A plain `hasattr` check is
 useless because this module itself defines the methods being probed, and some
 core methods exist on both pipelines but are dead stubs on one.
 
@@ -13,8 +14,8 @@ Two things are tested:
 
 1. `core_defines_in_mro` can return False when only our own class defines a
    name.
-2. `classify_core_profile` can return all three answers (`search_plan`,
-   `legacy`, `unknown`) on fixture cores.
+2. `classify_core_profile` can return all four answers (`search_plan`,
+   `search_plan_18`, `legacy`, `unknown`) on fixture cores.
 
 The live-build tests assert the rule (exactly one known profile, recorded and
 acted on), not which profile a given build is; that is asserted by the gated
@@ -30,9 +31,11 @@ from odoo.tests import BaseCase, TransactionCase, tagged
 from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     CORE_PROFILE_PARAM,
+    KNOWN_PROFILES,
     OUR_MODULE,
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
     PROFILE_UNKNOWN,
     classify_core_profile,
     core_defines_in_mro,
@@ -50,6 +53,7 @@ SEARCH_PLAN_CORE = {
     ("account.edi.ubl", "_import_ubl_create_missing_customer"),
     ("res.partner", "_import_retrieve_customer"),
     ("res.partner", "_import_retrieve_customer_from_name"),
+    ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan"),
     ("product.product", "_import_retrieve_product_from_supplierinfo"),
     # It also has every name the legacy profile checks, so a profile built
     # only from "is this name present" would match `legacy` too.
@@ -60,7 +64,17 @@ SEARCH_PLAN_CORE = {
     ("res.partner", "_retrieve_partner_with_name"),
 }
 
-# Odoo 18.0 and early 19.0 builds (legacy pipeline).
+# Odoo 18.0 from April 2026 on: 19.0's partner pipeline, 18.0's product plan
+# (built by `account.edi.common`), and no core supplierinfo step.
+SEARCH_PLAN_18_CORE = (
+    SEARCH_PLAN_CORE
+    - {
+        ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan"),
+        ("product.product", "_import_retrieve_product_from_supplierinfo"),
+    }
+) | {("account.edi.common", "_import_retrieve_products_search_plan")}
+
+# Odoo 18.0 before April 2026 and early 19.0 builds (legacy pipeline).
 LEGACY_CORE = {
     ("account.edi.common", "_import_partner"),
     ("account.edi.common", "_import_invoice_lines"),
@@ -239,14 +253,48 @@ class TestProfileClassification(BaseCase):
         profile, _failures = classify_core_profile(probe_for(LEGACY_CORE))
         self.assertEqual(profile, PROFILE_LEGACY)
 
+    def test_an_18_search_plan_core_is_recognised(self):
+        """The 18.0 build from April 2026 on is its own profile, not
+        `unknown`."""
+        profile, failures = classify_core_profile(probe_for(SEARCH_PLAN_18_CORE))
+        self.assertEqual(profile, PROFILE_SEARCH_PLAN_18, failures)
+
+    def test_an_18_search_plan_core_is_neither_of_the_others(self):
+        """It has the search-plan entry point, so it is not legacy; it lacks
+        core's supplierinfo step, so it is not 19.0's search plan."""
+        _profile, failures = classify_core_profile(probe_for(SEARCH_PLAN_18_CORE))
+        self.assertTrue(failures[PROFILE_LEGACY])
+        self.assertIn(
+            "product.product._import_retrieve_product_from_supplierinfo "
+            "(expected present)",
+            failures[PROFILE_SEARCH_PLAN],
+        )
+
+    def test_a_19_search_plan_core_is_not_the_18_one(self):
+        _profile, failures = classify_core_profile(probe_for(SEARCH_PLAN_CORE))
+        self.assertIn(
+            "product.product._import_retrieve_product_from_supplierinfo "
+            "(expected absent)",
+            failures[PROFILE_SEARCH_PLAN_18],
+        )
+
+    def test_an_18_search_plan_core_without_its_product_hook_is_unknown(self):
+        """A build whose product plan this module cannot hook is refused
+        rather than imported with the vendor-code guard silently off."""
+        core = SEARCH_PLAN_18_CORE - {
+            ("account.edi.common", "_import_retrieve_products_search_plan")
+        }
+        profile, _failures = classify_core_profile(probe_for(core))
+        self.assertEqual(profile, PROFILE_UNKNOWN)
+
     def test_an_unrecognised_core_is_unknown(self):
         """An unrecognised core is `unknown`, with failures listed per
         profile."""
         profile, failures = classify_core_profile(probe_for(NEITHER_CORE))
         self.assertEqual(profile, PROFILE_UNKNOWN)
         # The failures name what was expected, for the ERROR log.
-        self.assertTrue(failures[PROFILE_SEARCH_PLAN])
-        self.assertTrue(failures[PROFILE_LEGACY])
+        for known in KNOWN_PROFILES:
+            self.assertTrue(failures[known])
 
     def test_a_search_plan_core_is_not_also_legacy(self):
         """`legacy` requires the search-plan entry point to be absent, so a
@@ -268,9 +316,6 @@ class TestProfileClassification(BaseCase):
         )
         self.assertEqual(profile, PROFILE_UNKNOWN)
 
-
-#: The two profiles this module ships adapters for. A build must be exactly one.
-KNOWN_PROFILES = (PROFILE_SEARCH_PLAN, PROFILE_LEGACY)
 
 
 @tagged("post_install", "-at_install")

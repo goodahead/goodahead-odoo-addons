@@ -32,6 +32,26 @@ class ProductProduct(models.Model):
             )
         ]
 
+    def _import_retrieve_product_from_ai_supplierinfo(self, product_values):
+        """Search-plan step: the vendor's own article codes, on 18.0 builds
+        from April 2026 on.
+
+        Those builds resolve products through a search plan but, unlike 19.0,
+        have no vendor-scoped supplierinfo step, so this is our equivalent of
+        19.0's ``_import_retrieve_product_from_supplierinfo``. The vendor is the
+        one core put on the line for its own predictive step; the codes are
+        the seller's item id and the GTIN. Declines (``{}``) without both.
+        """
+        predictive = product_values.get("invoice_predictive") or {}
+        vendor = (predictive.get("partner") or self.env["res.partner"]).commercial_partner_id
+        domain = self._ai_vendor_supplierinfo_domain(
+            vendor.id,
+            (product_values.get("default_code"), product_values.get("barcode")),
+        )
+        if domain is None:
+            return {}
+        return {"criteria": [{"domain": domain}]}
+
     def _retrieve_product(
         self, name=None, default_code=None, barcode=None, company=None, extra_domain=None
     ):

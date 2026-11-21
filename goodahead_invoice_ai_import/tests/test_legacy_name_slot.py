@@ -29,8 +29,10 @@ from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+    KNOWN_PROFILES,
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
+    PROFILE_SEARCH_PLAN_18,
 )
 
 from .profiles import (
@@ -234,7 +236,7 @@ class TestTheNameSlotAdapter(TransactionCase):
             "narrowed at all",
         )
 
-    @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
     def test_this_core_already_decides_the_near_name_pair(self):
         """The search-plan core already picks the exact-name partner (``=ilike``
         with ``limit=1``), so the legacy slot now gives the same answer.
@@ -383,29 +385,34 @@ class TestBothProfilesAreCovered(TransactionCase):
 
     def test_the_gates_actually_fired_on_this_bench(self):
         live = self.env["account.move"]._ai_core_profile()
-        self.assertIn(live, (PROFILE_SEARCH_PLAN, PROFILE_LEGACY))
-        other = PROFILE_LEGACY if live == PROFILE_SEARCH_PLAN else PROFILE_SEARCH_PLAN
+        self.assertIn(live, KNOWN_PROFILES)
 
         self.assertTrue(
             PROFILE_RAN[live],
             "no test gated on %r EXECUTED, so this run proves nothing about "
             "the build it was run on" % live,
         )
-        self.assertFalse(
-            PROFILE_RAN[other],
-            "a test gated on %r executed on a %r build: %s"
-            % (other, live, sorted(PROFILE_RAN[other])),
-        )
-        self.assertTrue(
-            PROFILE_SKIPPED[other],
-            "nothing gated on %r was skipped, so the two benches did not "
-            "disagree about anything" % other,
-        )
+        for other in KNOWN_PROFILES:
+            if other == live:
+                continue
+            self.assertFalse(
+                PROFILE_RAN[other],
+                "a test gated on %r executed on a %r build: %s"
+                % (other, live, sorted(PROFILE_RAN[other])),
+            )
+            # A profile only shares gates with this one (no test of its own)
+            # is still told apart by the markers; see test_core_profile.
+            if PROFILE_GATED[other] - PROFILE_GATED[live]:
+                self.assertTrue(
+                    PROFILE_SKIPPED[other] - PROFILE_GATED[live],
+                    "nothing gated only on %r was skipped, so the benches did "
+                    "not disagree about anything" % other,
+                )
 
     def test_every_gate_was_reached_and_decided(self):
         """Each gated test either ran or skipped — none was quietly dropped
         from the suite by a tag, a `--test-tags` filter or a missing import."""
-        for profile in (PROFILE_SEARCH_PLAN, PROFILE_LEGACY):
+        for profile in KNOWN_PROFILES:
             self.assertEqual(
                 PROFILE_RAN[profile] | PROFILE_SKIPPED[profile],
                 PROFILE_GATED[profile],
@@ -426,7 +433,7 @@ class TestBothProfilesAreCovered(TransactionCase):
         A dropped test module or deleted decorator shrinks every run-time
         registry together, so only a written-down number notices.
         """
-        for profile in (PROFILE_SEARCH_PLAN, PROFILE_LEGACY):
+        for profile in KNOWN_PROFILES:
             self.assertEqual(
                 len(PROFILE_GATED[profile]),
                 EXPECTED_GATED[profile],
@@ -449,6 +456,14 @@ class TestBothProfilesAreCovered(TransactionCase):
             PROFILE_RAN[PROFILE_SEARCH_PLAN],
         )
 
+    @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
+    def test_a_search_plan_18_gate_in_this_very_class_fired(self):
+        self.assertIn(
+            "TestBothProfilesAreCovered."
+            "test_a_search_plan_18_gate_in_this_very_class_fired",
+            PROFILE_RAN[PROFILE_SEARCH_PLAN_18],
+        )
+
     @skip_method_unless_profile(PROFILE_LEGACY)
     def test_a_legacy_gate_in_this_very_class_fired(self):
         self.assertIn(
@@ -459,7 +474,7 @@ class TestBothProfilesAreCovered(TransactionCase):
     def test_this_build_records_a_profile_the_gates_know(self):
         self.assertIn(
             self.env["account.move"]._ai_core_profile(),
-            (PROFILE_SEARCH_PLAN, PROFILE_LEGACY),
+            KNOWN_PROFILES,
             "the bench must know which bench it is before anything gated on it "
             "is believed",
         )
@@ -595,7 +610,7 @@ class _ImportHarness(TransactionCase):
         return calls, patch.object(partner_cls, "_retrieve_partner_with_name", counting)
 
 
-@skip_unless_profile(PROFILE_SEARCH_PLAN)
+@skip_unless_profile(PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
 @tagged("post_install", "-at_install")
 class TestTheNameSlotIsInertOnTheSearchPlanBuild(_ImportHarness):
     """On the search-plan build a full import never enters the name slot."""

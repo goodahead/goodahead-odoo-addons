@@ -3,14 +3,21 @@
 
 """Is this core running the vendor-bill import pipeline this module hooks?
 
-Odoo has two UBL vendor-bill import pipelines:
+Odoo has two UBL vendor-bill import pipelines, and three builds of them:
 
-  * `legacy` — Odoo 18.0 (and early 19.0 builds): BIS 3.0 goes through
-    `account.edi.common._import_partner` -> `res.partner._retrieve_partner`.
-    This is the one the 18.0 branch of this module supports.
+  * `legacy` — Odoo 18.0 builds before April 2026 (and early 19.0 builds):
+    BIS 3.0 goes through `account.edi.common._import_partner` ->
+    `res.partner._retrieve_partner`.
   * `search_plan` — newer 19.0 builds: `account.edi.ubl._ubl_import_invoice`
     drives an ordered search plan of `res.partner._import_retrieve_customer_from_*`
-    steps. Only the 19.0 branch supports it; on 18.0 it is never detected.
+    steps, and products go through
+    `account.edi.ubl._import_ubl_retrieve_products_search_plan`, which has a
+    vendor-scoped supplierinfo step.
+  * `search_plan_18` — Odoo 18.0 builds from April 2026 on (odoo/odoo
+    `86463ce1d`, "Fix import totals", backported the search-plan pipeline).
+    Partners and bank accounts are resolved exactly as on `search_plan`;
+    products go through `account.edi.common._import_retrieve_products_search_plan`
+    and core has no supplierinfo step, so this module supplies its own.
 
 An override of a method a build does not have is a silent no-op, so the module
 must know which pipeline it is on. `hasattr` is useless (this module defines
@@ -35,8 +42,15 @@ _logger = logging.getLogger(__name__)
 OUR_MODULE = "odoo.addons.goodahead_invoice_ai_import"
 
 PROFILE_SEARCH_PLAN = "search_plan"
+PROFILE_SEARCH_PLAN_18 = "search_plan_18"
 PROFILE_LEGACY = "legacy"
 PROFILE_UNKNOWN = "unknown"
+
+#: The profiles this module ships adapters for. A build must match exactly one.
+KNOWN_PROFILES = (PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18, PROFILE_LEGACY)
+
+#: The profiles on which partners and bank accounts go through the search plan.
+SEARCH_PLAN_PROFILES = (PROFILE_SEARCH_PLAN, PROFILE_SEARCH_PLAN_18)
 
 #: Stored for support/diagnostics only; never treated as the answer.
 CORE_PROFILE_PARAM = "goodahead_invoice_ai_import.core_profile"
@@ -60,12 +74,29 @@ SUBSTITUTE_PDF_READER = (
     "odoo.addons.account_edi_ubl_cii.models.account_edi_ubl",
 )
 
+#: The same on 18.0: core reads the parameter in
+#: `account.edi.common._generate_pdf_attachment`. 18.0 builds from late
+#: February to early April 2026 already had that method but did not yet read
+#: the parameter; there the probe errs towards True, which only writes a row
+#: core ignores.
+SUBSTITUTE_PDF_READER_18 = (
+    "account.edi.common",
+    "_generate_pdf_attachment",
+    "odoo.addons.account_edi_ubl_cii.models.account_edi_common",
+)
+
+#: Any of these defined by core means core reads the parameter.
+SUBSTITUTE_PDF_READERS = (SUBSTITUTE_PDF_READER, SUBSTITUTE_PDF_READER_18)
+
 #: What core's own `str2bool` treats as true.
 _TRUTHY = frozenset({"true", "yes", "t", "y", "on", "1"})
 
 #: The core revisions this module has been verified against (informational;
 #: the probe is the enforcement).
-MEASURED_AGAINST = "legacy: odoo/odoo 18.0 (66d9d8da3, 2025-12-10)"
+MEASURED_AGAINST = (
+    "legacy: odoo/odoo 18.0 (66d9d8da3, 2025-12-10); "
+    "search_plan_18: odoo/odoo 18.0 (465ae31c1, 2026-11-21)"
+)
 
 #: profile -> ((model, method, must_be_defined_by_core), ...)
 #:
@@ -80,10 +111,24 @@ PROFILE_MARKERS = {
         # Confirmatory: a search-plan core without these falls to `unknown`.
         ("res.partner", "_import_retrieve_customer", True),
         ("res.partner", "_import_retrieve_customer_from_name", True),
+        # The discriminator against `search_plan_18`.
         ("product.product", "_import_retrieve_product_from_supplierinfo", True),
         # Also defined by this module; the MRO walk ignores our own classes.
         ("account.edi.ubl", "_import_ubl_retrieve_customer_search_plan", True),
         ("account.edi.ubl", "_import_ubl_create_missing_customer", True),
+        ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan", True),
+    ),
+    PROFILE_SEARCH_PLAN_18: (
+        # The same partner pipeline as `search_plan`...
+        ("account.edi.ubl", "_ubl_import_invoice", True),
+        ("res.partner", "_import_retrieve_customer", True),
+        ("res.partner", "_import_retrieve_customer_from_name", True),
+        ("account.edi.ubl", "_import_ubl_retrieve_customer_search_plan", True),
+        ("account.edi.ubl", "_import_ubl_create_missing_customer", True),
+        # ...with 18.0's product plan, which this module hooks, and without
+        # core's supplierinfo step (the discriminator against `search_plan`).
+        ("account.edi.common", "_import_retrieve_products_search_plan", True),
+        ("product.product", "_import_retrieve_product_from_supplierinfo", False),
     ),
     PROFILE_LEGACY: (
         # The discriminator, as an absence: the search-plan core also has every
@@ -262,8 +307,10 @@ class AccountMove(models.Model):
         declared them). Errs towards False: that only loses the global backstop,
         while the attachment-ordering fix in `_finalize_import` still applies.
         """
-        model, method, defining_module = SUBSTITUTE_PDF_READER
-        return self._ai_core_defines(model, method, in_module=defining_module)
+        return any(
+            self._ai_core_defines(model, method, in_module=defining_module)
+            for model, method, defining_module in SUBSTITUTE_PDF_READERS
+        )
 
     @api.model
     def _ai_apply_substitute_pdf_policy(self):
@@ -277,14 +324,14 @@ class AccountMove(models.Model):
         """
         if not self._ai_core_reads_substitute_pdf_param():
             _logger.info(
-                "AI invoice import: this core does not read %s (no %s.%s in %s), "
+                "AI invoice import: this core does not read %s (none of %s), "
                 "so it is left unset. The vendor's own PDF is still made the "
                 "bill's main attachment before the decoder runs, which does "
                 "not depend on this parameter.",
                 SUBSTITUTE_PDF_PARAM,
-                SUBSTITUTE_PDF_READER[0],
-                SUBSTITUTE_PDF_READER[1],
-                SUBSTITUTE_PDF_READER[2],
+                ", ".join(
+                    "%s.%s in %s" % reader for reader in SUBSTITUTE_PDF_READERS
+                ),
             )
             return None
         params = self.env["ir.config_parameter"].sudo()
@@ -425,7 +472,7 @@ class AccountMove(models.Model):
         walk with no queries.
         """
         profile, failures = self._ai_detect_core_profile()
-        if profile in (PROFILE_SEARCH_PLAN, PROFILE_LEGACY):
+        if profile in KNOWN_PROFILES:
             self._ai_store_core_profile(profile)
             return profile
         detail = "; ".join(
@@ -436,8 +483,8 @@ class AccountMove(models.Model):
         raise UserError(
             _(
                 "AI Invoice Import cannot run on this Odoo core.\n\n"
-                "It supports two vendor-bill import pipelines and recognises "
-                "neither of the ones this database has. Importing anyway would "
+                "It supports three builds of Odoo's vendor-bill import and "
+                "recognises none of them in this database. Importing anyway would "
                 "create duplicate vendors and write bank details read off a PDF, "
                 "so it refuses instead.\n\n"
                 "Measured against: %(measured)s\n\n"

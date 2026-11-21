@@ -413,8 +413,19 @@ def _fmt_decimal(value, label="an amount"):
 # skips one of core's partner-matching steps and can never fail an import.
 
 
+#: Format rules core's `_build_error_peppol_endpoint` applies per scheme on
+#: top of the character rules (0235, the UAE TIN, was added to 18.0 in
+#: November 2026). Applied on every build: on a core without a rule, being
+#: stricter only means one endpoint fewer, never a failed import.
+PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS = {
+    "0007": re.compile(r"^\d{10}$"),
+    "0208": re.compile(r"^\d{10}$"),
+    "0235": re.compile(r"^\d{10}$"),
+}
+
+
 def peppol_endpoint_is_valid(eas, endpoint):
-    """Character and length rules for an endpoint.
+    """Character, length and per-scheme format rules for an endpoint.
 
     A value that breaks them is omitted instead of risking a failed import.
     """
@@ -423,7 +434,10 @@ def peppol_endpoint_is_valid(eas, endpoint):
     invalid_chars_re = PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS.get(
         eas, PEPPOL_ENDPOINT_INVALIDCHARS_RE
     )
-    return not invalid_chars_re.search(endpoint) and 1 <= len(endpoint) <= 50
+    if invalid_chars_re.search(endpoint) or not 1 <= len(endpoint) <= 50:
+        return False
+    format_re = PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS.get(eas)
+    return not format_re or bool(format_re.match(endpoint))
 
 
 def vat_peppol_eas_codes(country_code):
