@@ -1,5 +1,11 @@
 # Goodahead Odoo addons
 
+[![Nightly against Odoo head](https://github.com/goodahead/goodahead-odoo-addons/actions/workflows/nightly.yml/badge.svg)](https://github.com/goodahead/goodahead-odoo-addons/actions/workflows/nightly.yml)
+
+The nightly run tests the `19.0` and `18.0` branches against the newest commit of
+Odoo's own 19.0 and 18.0 branches, so a change in Odoo's internals shows up the
+next morning.
+
 Odoo 19.0 modules by [Goodahead Oy](https://goodahead.com), mainly for
 accounting: AI import of vendor bills and two-step bill approval.
 
@@ -7,7 +13,7 @@ accounting: AI import of vendor bills and two-step bill approval.
 
 | Module | Version | What it does |
 |--------|---------|--------------|
-| [goodahead_invoice_ai_import](goodahead_invoice_ai_import/) | 19.0.3.33.0 | Turns vendor bill PDFs (by email alias or upload) into draft bills. Claude reads the PDF; the result is built as Peppol BIS 3.0 UBL and imported through Odoo's own UBL importer. Vendors are matched by VAT, business ID, phone, email or website domain, then name; unknown vendors are offered as candidates, not created. The bill's IBAN must belong to the vendor. |
+| [goodahead_invoice_ai_import](goodahead_invoice_ai_import/) | 19.0.3.34.0 | Turns vendor bill PDFs (by email alias or upload) into draft bills. Claude reads the PDF; the result is built as Peppol BIS 3.0 UBL and imported through Odoo's own UBL importer. Vendors are matched by VAT, business ID, phone, email or website domain, then name; unknown vendors are offered as candidates, not created. The bill's IBAN must belong to the vendor. |
 | [goodahead_claude](goodahead_claude/) | 19.0.1.4.0 | Claude (Anthropic) API client for other addons: per-company API key and default model, a synced model catalog, prompt caching, and Test Connection / Sync Models in Settings. |
 | [goodahead_bill_approval](goodahead_bill_approval/) | 19.0.1.5.0 | A vendor bill or customer credit note is reviewed, then approved, before it can be posted. Two approval levels granted per user, with an optional chosen approver and substitute. |
 
