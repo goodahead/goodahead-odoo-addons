@@ -2,6 +2,28 @@
 
 All notable changes to `goodahead_invoice_ai_import`, newest first.
 
+## 19.0.3.34.0
+
+- Fixed: on Odoo 19.0 builds from September 2026 on (including the security update of
+  23 November 2026), vendor product codes could match your own internal references
+  again. Odoo moved the product search plan from
+  `account.edi.ubl._import_ubl_retrieve_products_search_plan` to
+  `account.edi.common._import_retrieve_products_search_plan` (odoo/odoo `5baa557`)
+  and removed the old name, so the module's narrowing was no longer called and
+  nothing reported it. The narrowing now hooks both names; each core calls exactly
+  one.
+- The core check now also requires one of those two product hooks. A future core
+  that has neither is refused with "cannot run on this Odoo core" instead of
+  importing without the narrowing.
+- The Peppol endpoint written into the generated UBL follows core's per-scheme format
+  rules (0007, 0208 and, new in 19.0, 0235 for the UAE: exactly 10 digits). A value
+  that does not fit is left out rather than failing the import.
+- No data changes; `-u goodahead_invoice_ai_import` is enough. The core profile is
+  re-detected at every server start.
+- Verified against odoo/odoo 19.0 `ca1f0ae` (legacy), `0d44f26` (search_plan, old
+  product hook) and `94696173` (search_plan, moved product hook): 683 tests, 0 failed
+  on each.
+
 ## 19.0.3.33.0
 
 - Fixed: two import jobs for the same vendor running at the same time could both try

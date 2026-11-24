@@ -50,6 +50,7 @@ SEARCH_PLAN_CORE = {
     ("res.partner", "_import_retrieve_customer"),
     ("res.partner", "_import_retrieve_customer_from_name"),
     ("product.product", "_import_retrieve_product_from_supplierinfo"),
+    ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan"),
     # It also has every name the legacy profile checks, so a profile built
     # only from "is this name present" would match `legacy` too.
     ("account.edi.common", "_import_partner"),
@@ -58,6 +59,13 @@ SEARCH_PLAN_CORE = {
     ("res.partner", "_retrieve_partner"),
     ("res.partner", "_retrieve_partner_with_name"),
 }
+
+# 19.0 from core 5baa557 (2026-09-01) on: the product plan has moved to
+# `account.edi.common` (seen through `account.edi.ubl`, which inherits it).
+SEARCH_PLAN_MOVED_PRODUCTS_CORE = (
+    SEARCH_PLAN_CORE
+    - {("account.edi.ubl", "_import_ubl_retrieve_products_search_plan")}
+) | {("account.edi.ubl", "_import_retrieve_products_search_plan")}
 
 # Older 19.0 build (legacy pipeline).
 LEGACY_CORE = {
@@ -233,6 +241,26 @@ class TestProfileClassification(BaseCase):
     def test_a_search_plan_core_is_recognised(self):
         profile, _failures = classify_core_profile(probe_for(SEARCH_PLAN_CORE))
         self.assertEqual(profile, PROFILE_SEARCH_PLAN)
+
+    def test_a_search_plan_core_with_the_moved_product_plan_is_recognised(self):
+        profile, _failures = classify_core_profile(
+            probe_for(SEARCH_PLAN_MOVED_PRODUCTS_CORE)
+        )
+        self.assertEqual(profile, PROFILE_SEARCH_PLAN)
+
+    def test_a_search_plan_core_without_any_product_plan_is_unknown(self):
+        """The narrowing would be a silent no-op, so the core is refused."""
+        core = SEARCH_PLAN_CORE - {
+            ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan")
+        }
+        profile, failures = classify_core_profile(probe_for(core))
+        self.assertEqual(profile, PROFILE_UNKNOWN)
+        self.assertTrue(
+            any(
+                "_import_retrieve_products_search_plan" in failure
+                for failure in failures[PROFILE_SEARCH_PLAN]
+            )
+        )
 
     def test_a_legacy_core_is_recognised(self):
         profile, _failures = classify_core_profile(probe_for(LEGACY_CORE))

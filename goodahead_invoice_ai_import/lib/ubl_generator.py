@@ -9,6 +9,7 @@ such as `EndpointID` are omitted rather than guessed.
 """
 
 import logging
+import re
 
 from lxml import etree
 
@@ -397,18 +398,32 @@ def _fmt_decimal(value, label="an amount"):
 # partner-matching steps and can never fail an import.
 
 
-def peppol_endpoint_is_valid(eas, endpoint):
-    """Core's character and length rules for an endpoint, applied here.
+#: Format rules core's `_build_error_peppol_endpoint` applies per scheme on
+#: top of the character rules (0235, the UAE TIN, was added in core a81f10a,
+#: 2026-11-04). Applied on every build: on a core without a rule, being
+#: stricter only means one endpoint fewer, never a failed import.
+PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS = {
+    "0007": re.compile(r"^\d{10}$"),
+    "0208": re.compile(r"^\d{10}$"),
+    "0235": re.compile(r"^\d{10}$"),
+}
 
-    Mirrors the tail of `res.partner._build_error_peppol_endpoint`, so a value
-    core would reject is omitted instead of failing the import.
+
+def peppol_endpoint_is_valid(eas, endpoint):
+    """Core's character, length and per-scheme format rules for an endpoint.
+
+    Mirrors `res.partner._build_error_peppol_endpoint`, so a value core would
+    reject is omitted instead of failing the import.
     """
     if not endpoint:
         return False
     invalid_chars_re = PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS.get(
         eas, PEPPOL_ENDPOINT_INVALIDCHARS_RE
     )
-    return not invalid_chars_re.search(endpoint) and 1 <= len(endpoint) <= 50
+    if invalid_chars_re.search(endpoint) or not 1 <= len(endpoint) <= 50:
+        return False
+    format_re = PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS.get(eas)
+    return not format_re or bool(format_re.match(endpoint))
 
 
 def vat_peppol_eas_codes(country_code):

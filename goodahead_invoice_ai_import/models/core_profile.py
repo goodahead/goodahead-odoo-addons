@@ -64,7 +64,8 @@ _TRUTHY = frozenset({"true", "yes", "t", "y", "on", "1"})
 #: The core revisions this module has been verified against (informational;
 #: the probe is the enforcement).
 MEASURED_AGAINST = (
-    "search_plan: odoo/odoo 189df3538aa07d22f683008522b9143421f411a2 (2026-06-23); "
+    "search_plan: odoo/odoo 189df3538aa07d22f683008522b9143421f411a2 (2026-06-23), "
+    "94696173552410a30892cf1376e72fb021b1c2ab (2026-11-23); "
     "legacy: odoo/odoo ca1f0aeae03399494a593baa798f11266a9fd113 (2026-01-17), "
     "19.0 nightly deb 20260118"
 )
@@ -86,6 +87,17 @@ PROFILE_MARKERS = {
         # Also defined by this module; the MRO walk ignores our own classes.
         ("account.edi.ubl", "_import_ubl_retrieve_customer_search_plan", True),
         ("account.edi.ubl", "_import_ubl_create_missing_customer", True),
+        # The product plan this module narrows, under either of its names (a
+        # tuple means "any of"): core 5baa557 moved it to `account.edi.common`.
+        # `account.edi.ubl` inherits that model, so one probe sees both.
+        (
+            "account.edi.ubl",
+            (
+                "_import_ubl_retrieve_products_search_plan",
+                "_import_retrieve_products_search_plan",
+            ),
+            True,
+        ),
     ),
     PROFILE_LEGACY: (
         # The discriminator, as an absence: the search-plan core also has every
@@ -129,6 +141,16 @@ def core_defines_in_mro(mro, method_name, in_module=None):
     return False
 
 
+def _marker_present(probe, model, method):
+    """A marker's method is one name, or a tuple of names meaning "any of"."""
+    names = method if isinstance(method, tuple) else (method,)
+    return any(bool(probe(model, name)) for name in names)
+
+
+def _marker_label(method):
+    return " or ".join(method) if isinstance(method, tuple) else method
+
+
 def classify_core_profile(probe, markers=None):
     """Return ``(profile, failures)``.
 
@@ -140,9 +162,10 @@ def classify_core_profile(probe, markers=None):
     failures = {}
     for profile, expectations in markers.items():
         failures[profile] = [
-            "%s.%s (expected %s)" % (model, method, "present" if expected else "absent")
+            "%s.%s (expected %s)"
+            % (model, _marker_label(method), "present" if expected else "absent")
             for model, method, expected in expectations
-            if bool(probe(model, method)) is not expected
+            if _marker_present(probe, model, method) is not expected
         ]
     matched = [profile for profile, failed in failures.items() if not failed]
     if len(matched) == 1:

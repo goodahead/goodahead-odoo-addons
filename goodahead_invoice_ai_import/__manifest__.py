@@ -3,7 +3,7 @@
 {
     "name": "AI Invoice Import",
     "summary": "Import vendor bills from PDF using Claude AI and Peppol BIS 3.0",
-    "version": "19.0.3.33.0",
+    "version": "19.0.3.34.0",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://goodahead.com",
