@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: a Finvoice 2.01 invoice (guideline §2 header form). -->
+<Finvoice Version="2.01" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice2.01.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000002-7</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Hardware</SellerOrganisationName>
+    <SellerOrganisationName>Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000027</SellerOrganisationTaxCode>
+    <SellerPostalAddressDetails>
+      <SellerStreetName>Rautatie 9</SellerStreetName>
+      <SellerTownName>Oulu</SellerTownName>
+      <SellerPostCodeIdentifier>90100</SellerPostCodeIdentifier>
+      <CountryCode>FI</CountryCode>
+    </SellerPostalAddressDetails>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>201-55</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261101</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">80,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">20,40</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">100,40</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">80,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">20,40</VatRateAmount>
+    </VatSpecificationDetails>
+    <PaymentTermsDetails>
+      <PaymentTermsFreeText>14 pv netto</PaymentTermsFreeText>
+      <InvoiceDueDate Format="CCYYMMDD">20261115</InvoiceDueDate>
+    </PaymentTermsDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>VS-10</ArticleIdentifier>
+    <ArticleName>Vasara</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">4</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">20,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">20,40</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">80,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">100,40</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261101</EpiDate>
+      <EpiReference>0</EpiReference>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Hardware Oy</EpiNameAddressDetails>
+        <EpiBei>28501739</EpiBei>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI7512345600000007</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiPaymentInstructionId/>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">40001111</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">100,40</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SHA">SHA</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261115</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

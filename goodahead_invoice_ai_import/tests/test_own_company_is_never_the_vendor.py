@@ -23,10 +23,10 @@ from unittest.mock import patch
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.base.models.res_bank import sanitize_account_number
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import PROFILE_LEGACY
+from odoo.addons.goodahead_invoice_import.models.core_profile import PROFILE_LEGACY
 
 from .profiles import skip_method_unless_profile
 
@@ -36,7 +36,7 @@ TRAP_PHONE = "+358400000999"
 
 #: A valid German VAT that belongs to nobody here, so the VAT step cannot match
 #: and resolution reaches the phone step.
-UNKNOWN_VAT = "DE811569869"
+UNKNOWN_VAT = "DE000000000"
 
 #: A name that matches nothing, so core's name step cannot fire either.
 TRAP_NAME = "ZZ Own Company Trap OU"
@@ -138,7 +138,7 @@ class _OwnCompanyTrapHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-ownco.pdf",
                 "company_id": self.company.id,

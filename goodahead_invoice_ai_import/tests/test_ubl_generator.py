@@ -7,7 +7,7 @@ from lxml import etree
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     UBLGenerationError,
     generate_peppol_invoice_xml,
 )
@@ -41,7 +41,7 @@ class TestUblGenerator(TransactionCase):
         CustomizationID and would classify the document as plain UBL 2.1.
         Control: an NLCIUS CustomizationID classifies as something else.
         """
-        xml = generate_peppol_invoice_xml(self._data(38.69, 20.95))
+        xml = generate_peppol_invoice_xml(self._data(44.95, 24.73))
         move = self.env["account.move"]
 
         def classify(raw):
@@ -69,10 +69,10 @@ class TestUblGenerator(TransactionCase):
         )
 
     def test_discounted_line_emits_net_unit_price(self):
-        # list 38.69, net 20.95 (discount) -> PriceAmount must be the net 20.95
-        xml = generate_peppol_invoice_xml(self._data(38.69, 20.95)).decode()
-        self.assertIn("20.95", xml)
-        self.assertNotIn("38.69", xml, "gross list price must not be emitted")
+        # list 44.95, net 24.73 (discount) -> PriceAmount must be the net 24.73
+        xml = generate_peppol_invoice_xml(self._data(44.95, 24.73)).decode()
+        self.assertIn("24.73", xml)
+        self.assertNotIn("44.95", xml, "gross list price must not be emitted")
 
     def test_multi_qty_net_unit_price(self):
         # qty 4, net line 100.00 -> unit price 25.00
@@ -105,7 +105,7 @@ class TestUblGenerator(TransactionCase):
     def test_note_emitted_once(self):
         # The note must not be written to both Note and PaymentTerms/Note.
         data = self._data(10.0, 10.0)
-        data["note"] = "Viivastyskorko 16 %. Huomautusaika 7 pv."
+        data["note"] = "Viivastyskorko 11,5 %. Huomautusaika 14 pv."
         xml = generate_peppol_invoice_xml(data).decode()
         self.assertEqual(xml.count(data["note"]), 1, "note must not be duplicated")
 

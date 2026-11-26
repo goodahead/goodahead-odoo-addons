@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-11 filters: refused, failed, ran too long; group by company or reason. -->
+    <record id="goodahead_invoice_send_attempt_view_search" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.attempt.search</field>
+        <field name="model">goodahead.invoice.send.attempt</field>
+        <field name="arch" type="xml">
+            <search string="Invoice sends">
+                <field name="move_id"/>
+                <field name="partner_id"/>
+                <field name="reason"/>
+                <filter name="refused" string="Refused" domain="[('state', '=', 'refused')]"/>
+                <filter name="failed" string="Failed" domain="[('state', '=', 'failed')]"/>
+                <filter name="ran_too_long" string="Ran too long"
+                        domain="[('reason', 'ilike', '[send.ran_too_long]')]"/>
+                <separator/>
+                <filter name="needs_attention" string="Needs attention"
+                        domain="[('needs_attention', '=', True)]"/>
+                <group>
+                    <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
+                    <filter name="group_reason" string="Reason" context="{'group_by': 'reason'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- SCR-11: invoices whose latest send was refused or failed, allowed
+         companies only (record rule). -->
+    <record id="goodahead_invoice_send_attempt_view_list_failed" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.attempt.list.failed</field>
+        <field name="model">goodahead.invoice.send.attempt</field>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0" decoration-danger="True">
+                <field name="move_id"/>
+                <field name="partner_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="channel"/>
+                <field name="state" widget="badge" decoration-danger="True"/>
+                <field name="reason"/>
+                <field name="display_date"/>
+                <field name="started_by_label"/>
+                <button name="action_open_invoice" type="object" string="Open invoice"
+                        class="btn-link"/>
+                <button name="action_open_mark_handled" type="object" string="Mark handled"
+                        class="btn-link"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_failed_sends" model="ir.actions.act_window">
+        <field name="name">Failed sends</field>
+        <field name="res_model">goodahead.invoice.send.attempt</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('needs_attention', '=', True)]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('goodahead_invoice_send_attempt_view_list_failed')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('goodahead_invoice_send_attempt_view_form')})]"/>
+        <field name="search_view_id" ref="goodahead_invoice_send_attempt_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No failed sends</p>
+            <p>Refused and failed sends of your companies appear here until a later send
+                succeeds or someone marks them handled.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_failed_sends"
+              name="Failed sends"
+              parent="account.menu_finance_receivables"
+              action="action_failed_sends"
+              groups="account.group_account_invoice"
+              sequence="120"/>
+
+    <!-- SCR-12: Mark handled. -->
+    <record id="goodahead_invoice_send_mark_handled_view_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.mark.handled.form</field>
+        <field name="model">goodahead.invoice.send.mark.handled</field>
+        <field name="arch" type="xml">
+            <form string="Mark handled">
+                <group>
+                    <field name="attempt_id" invisible="1"/>
+                    <field name="move_id" readonly="1"/>
+                    <field name="outcome" readonly="1"/>
+                    <field name="reason" required="1"
+                           placeholder="Why this send needs no more attention"/>
+                </group>
+                <footer>
+                    <button name="action_mark_handled" type="object" string="Mark handled"
+                            class="btn-primary" data-hotkey="q"/>
+                    <button special="cancel" string="Cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

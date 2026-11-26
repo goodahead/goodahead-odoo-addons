@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!--
+        The invoice-import block of the Accounting settings. The settings that
+        are about the AI read (extraction model and prompt) are added to this
+        block by `goodahead_invoice_ai_import`, before the domains setting, so
+        the block reads as it always has (core/source split).
+    -->
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.goodahead.invoice.import</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='account']" position="inside">
+                <block title="AI Invoice Import" name="ai_invoice_import">
+                    <!--
+                        The warning on this setting is the setting. A domain
+                        REMOVED from this list silently starts identifying every
+                        contact on it, so the consequence is spelled out on the
+                        field itself (`help`) and not only in a changelog —
+                        the dual-core design.
+
+                        🔴 AND IT IS SPELLED OUT HERE TOO, WHICH IT WAS NOT
+                        (found in review). Odoo renders this `help`
+                        attribute as grey text under the label, ON SCREEN AT
+                        ALL TIMES; `fields.Char(help=…)` is the TOOLTIP, which
+                        needs a hover. 19.0.3.14.0 corrected the warning — the
+                        danger is a provider carried by EXACTLY ONE
+                        bill-eligible partner, not one carried by many — and
+                        the correction landed in the tooltip only. The sentence
+                        left here was the retracted one, and it is the one that
+                        makes a removal sound survivable.
+                    -->
+                    <setting id="ai_public_email_domains_setting"
+                             string="Domains That Never Identify a Vendor"
+                             help="Domains that must never identify a vendor — free mail providers, and placeholder domains an import writes — on top of the list shipped with this module. Leaving it empty keeps the shipped list; it does not switch the protection off. An entry written as -gmail.com REMOVES that domain, and if exactly one contact on it can receive bills, every invoice printing an address there is filed against that one company — see the field's tooltip.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <field name="ai_public_email_domains"
+                                       widget="text"
+                                       placeholder="suomi24.fi, elisanet.fi, online.no"/>
+                            </div>
+                        </div>
+                    </setting>
+                    <setting string="Expense Categories"
+                             help="Map expense types to accounting accounts for imported lines">
+                        <button type="action"
+                                name="%(action_expense_category)d"
+                                string="Configure Expense Categories"
+                                class="btn-link ps-0"
+                                icon="oi-arrow-right"/>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

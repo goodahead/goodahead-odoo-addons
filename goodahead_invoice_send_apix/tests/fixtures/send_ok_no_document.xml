@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented SendInvoiceZIP answer: status OK, but no document accepted or rejected (review R2) -->
+<Response version="1.0">
+ <Status>OK</Status>
+ <StatusCode>1000</StatusCode>
+ <FreeText language="en">OK</FreeText>
+ <Content>
+  <Group>
+   <Value type="BatchID">00000000-aaaa-bbbb-cccc-000000000009</Value>
+   <Value type="Saldo">250</Value>
+   <Value type="CostInCredits">0</Value>
+   <Value type="NetworkedInvoices">0</Value>
+   <Value type="Letters">0</Value>
+   <Value type="LetterPages">0</Value>
+   <Value type="AcceptedDocument">0</Value>
+  </Group>
+ </Content>
+</Response>

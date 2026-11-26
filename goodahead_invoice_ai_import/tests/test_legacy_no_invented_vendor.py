@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
@@ -115,7 +115,7 @@ class _SuppressionHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-noinvent.pdf",
                 "company_id": self.company.id,

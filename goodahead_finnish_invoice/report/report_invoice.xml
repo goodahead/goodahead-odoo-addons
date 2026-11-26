@@ -1,0 +1,769 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <data>
+
+        <!--
+            Geometry is taken from a measured reference layout of a Finnish
+            invoice: the positions and type sizes below are the millimetres and
+            points that layout uses, so the two can be laid on top of each other. Do not swap the explicit
+            mm widths for a Bootstrap grid — the container's gutters and
+            max-width are exactly what has to be neutralised here.
+
+            Where the blocks live follows the same reference's two-page copy:
+              header  - document title and page number, on every page
+              body    - seller and recipient block (page 1 by flow), the line
+                        table, and the totals (so they land on the last page)
+              footer  - VAT breakdown, payment slip and bar code, on page 1 only
+        -->
+        <template id="invoice_styles">
+            <style>
+                /* web.report_layout puts `container` on the body, whose padding
+                   and max-width would inset and narrow the whole page. */
+                html, body, .container, .o_body_pdf, .article, .header, .footer {
+                    max-width: none !important; width: 100% !important;
+                    padding: 0 !important; margin: 0 !important;
+                }
+                /*
+                    wkhtmltopdf's own side margins are 0: one block per document
+                    holds the page edge and the tables simply fill it, so the
+                    column percentages below are percentages of 189 mm and land
+                    where the reference's columns land.
+                */
+                .fi_page {
+                    width: 189mm !important; padding: 0 !important;
+                    margin: 0 0 0 10mm !important;
+                }
+                .fi_page table { width: 100% !important; }
+
+                .fi_inv { font-family: "DejaVu Sans Condensed", "DejaVu Sans", sans-serif;
+                          color: #000; }
+
+                /* The report stylesheet styles bare tables — borders on rows as
+                   well as cells. Reset, then add back only what the reference
+                   actually shows. */
+                .fi_inv table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+                .fi_inv table thead, .fi_inv table tbody, .fi_inv table tfoot,
+                .fi_inv table tr, .fi_inv table th, .fi_inv table td {
+                    border: 0 !important; padding: 0; vertical-align: top;
+                    font-weight: normal; text-align: left;
+                }
+
+                .fi_r { text-align: right !important; }
+                .fi_b { font-weight: bold !important; }
+
+                /* ---- running header -------------------------------------- */
+                .fi_head td { vertical-align: top; }
+                /* Scoped past the table reset above, which is one specificity
+                   point higher than a bare class and would win otherwise. */
+                .fi_inv table td.fi_doctype { font-size: 12pt; font-weight: bold; }
+                .fi_inv table td.fi_pageno { font-size: 10pt; text-align: right; }
+
+                /* ---- seller and recipient -------------------------------- */
+                .fi_seller_name { font-size: 14pt; font-weight: bold; }
+                /* Under the logo, so sized to be read as the payee's name
+                   without competing with the mark above it — a step up from the
+                   address it sits on, not a second heading. */
+                .fi_seller_legal { font-size: 10pt; font-weight: bold;
+                                   line-height: 15px; }
+                .fi_seller { font-size: 8pt; line-height: 13px; }
+                /* Bold and dark, like every other head on the page: this was
+                   the one label set in quiet grey, and on a document whose
+                   whole job is to say where the goods go, the reader should
+                   not have to hunt for it. Still a step below the 9pt address
+                   it heads, so it labels rather than competes. */
+                .fi_addr_label { font-size: 8pt; font-weight: bold; color: #000;
+                                 padding-bottom: 0.6mm; }
+                .fi_addr { font-size: 9pt; line-height: 15px; }
+                .fi_top .fi_top_left { padding-left: 0; }
+                /* Flush left, like the recipient block below and the tables
+                   beside it. An indent under the logo was tried, but against a
+                   page whose every other block starts at the edge it only read
+                   as a misalignment - the proforma dropped it for the same
+                   reason, and the two documents should match. */
+                .fi_seller_block { padding-top: 1.2mm; }
+
+                /*
+                    One table language for every panel on the page: a hairline
+                    box, a bold head separated by a rule, and the same cell
+                    padding throughout. Only the invoice lines differ, and only
+                    by being roomier.
+                */
+                .fi_inv table.fi_box { border: 1px solid #666 !important; }
+                .fi_inv table.fi_box th {
+                    font-size: 9pt; font-weight: bold; padding: 6px 8px 5px;
+                    border-bottom: 1px solid #666 !important; background: #f2f2f2;
+                }
+                .fi_inv table.fi_box td { font-size: 9pt; padding: 5px 8px; }
+                /* A figure may never be broken across two lines: "1 752,19"
+                   wrapped after the thousands space reads as two numbers, and
+                   on a document someone pays from that is the one thing on the
+                   page that has to be unambiguous. Right-aligned cells are the
+                   numeric ones; the description column still wraps freely. */
+                .fi_inv table td.fi_r, .fi_inv table th.fi_r { white-space: nowrap; }
+                /* Same rule, stronger reason: every cell of the payment slip is
+                   something the customer keys into a bank. An IBAN broken over
+                   two lines is worse than one that runs wide, because only the
+                   second is obviously wrong. */
+                .fi_inv table.fi_pay td, .fi_inv table.fi_pay th {
+                    white-space: nowrap;
+                }
+                .fi_inv table.fi_box tr.fi_sum td {
+                    font-weight: bold; border-top: 1px solid #666 !important;
+                }
+                /* One rule opens the summary block however many rows it runs
+                   to, rather than one rule per row. */
+                .fi_inv table.fi_box tr.fi_sum + tr.fi_sum td {
+                    border-top: 0 !important;
+                }
+                .fi_inv table.fi_box td.fi_key { font-weight: bold; }
+                .fi_inv table.fi_box tr.fi_rule td { border-top: 1px solid #ccc !important; }
+                /* The label column is this panel's head, so it is shaded like
+                   the head row of every other table. */
+                .fi_inv table.fi_details td.fi_key { background: #f2f2f2; }
+                .fi_inv table.fi_details td { border-bottom: 1px solid #ddd !important; }
+                .fi_inv table.fi_details tr:last-child td { border-bottom: 0 !important; }
+
+                /* ---- invoice lines --------------------------------------- */
+                .fi_inv table.fi_lines { border: 1px solid #666 !important; }
+                .fi_inv table.fi_lines th {
+                    font-size: 8.4pt; font-weight: bold; padding: 6px 6px 5px;
+                    border-bottom: 1px solid #666 !important; background: #f2f2f2;
+                }
+                .fi_inv table.fi_lines td { font-size: 8.4pt; line-height: 15px;
+                                            padding: 7px 6px; }
+                /* A table that breaks across pages leaves its box open at the
+                   foot of every page but the last. A tfoot is repeated on each
+                   page, so an empty one closes the box everywhere. */
+                .fi_inv table.fi_lines tfoot td {
+                    border-top: 1px solid #666 !important;
+                    padding: 0 !important; font-size: 0; line-height: 0;
+                }
+
+                .fi_totals .fi_cur { padding-left: 8px; }
+                /* Wide enough that a six-figure gross does not wrap. */
+                .fi_inv table.fi_vat { width: 397px !important; }
+
+                .fi_inv table td.fi_legal { font-size: 7.5pt; line-height: 12px;
+                                            vertical-align: middle; }
+                /* Explicit px, not 100%: the engine leaves a percentage width on
+                   an img alone. 350px is 93mm, filling its half of the footer —
+                   the wider the bars, the happier a bank's scanner. */
+                .fi_barcode { width: 350px; height: 40px; }
+            </style>
+        </template>
+
+        <template id="report_invoice_document">
+            <t t-set="o" t-value="o.with_context(lang=lang)" />
+            <t t-set="company" t-value="o.company_id" />
+
+            <div class="header fi_inv">
+                <t t-call="goodahead_finnish_invoice.invoice_styles" />
+                <div class="fi_page">
+                <table class="fi_head">
+                    <colgroup>
+                        <col style="width: 49.21%;" />
+                        <col style="width: 31.75%;" />
+                        <col style="width: 19.04%;" />
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <td />
+                            <td class="fi_doctype">
+                                <span t-if="o.move_type == 'out_refund'">Credit Note</span>
+                                <span t-else="">Invoice</span>
+                            </td>
+                            <!-- One source line: Odoo extracts this whole run as
+                                 a single translatable term, indentation and all. -->
+                            <td
+                                class="fi_pageno"
+                            ><span>Page</span> <span class="page" /> / <span class="topage" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            <div
+                class="article fi_inv"
+                t-att-data-oe-model="o and o._name"
+                t-att-data-oe-id="o and o.id"
+                t-att-data-oe-lang="o and o.env.context.get('lang')"
+            >
+                <t t-call="goodahead_finnish_invoice.invoice_styles" />
+                <div class="fi_page">
+
+                <table class="fi_top">
+                    <colgroup>
+                        <col style="width: 53.97%;" />
+                        <col style="width: 46.03%;" />
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <td class="fi_top_left">
+                                <div style="padding-top: 3.7mm;">
+                                    <img
+                                        t-if="company.logo"
+                                        t-att-src="image_data_uri(company.logo)"
+                                        style="max-height: 11mm; max-width: 60mm;"
+                                        alt="Logo"
+                                    />
+                                </div>
+                                <!--
+                                    The logo is the Dreamhome brand mark, which
+                                    is not the name the bank account is held in:
+                                    customers were paying to "Dreamhome" and
+                                    their banks were rejecting it. So the legal
+                                    name is always stated, under the logo rather
+                                    than instead of it, and only stands in at
+                                    full size when there is no logo to carry.
+                                -->
+                                <div class="fi_seller_block">
+                                    <div
+                                        t-att-class="'fi_seller_legal' if company.logo else 'fi_seller_name'"
+                                        t-field="company.name"
+                                    />
+                                    <div
+                                        class="fi_seller"
+                                        t-field="company.partner_id"
+                                        t-options='{"widget": "contact", "fields": ["address"], "no_marker": True}'
+                                    />
+                                </div>
+                                <!--
+                                    Side by side, billing staying on the left
+                                    where it was: that block has to sit in the
+                                    window of a C5 envelope, so the delivery
+                                    address takes the space beside it rather
+                                    than pushing it down the page. It is shown
+                                    only when it is somewhere else — repeating
+                                    the billing address under a second heading
+                                    tells the reader nothing.
+
+                                    The spacer is trimmed from 12 mm to hold the
+                                    block where it was: the taller logo and the
+                                    legal name above it take up the difference.
+                                    The proforma uses the same 4.5 mm.
+                                -->
+                                <t t-set="delivery" t-value="o._fi_delivery_partner()" />
+                                <div style="padding-top: 4.5mm;">
+                                    <table>
+                                        <colgroup>
+                                            <col
+                                                t-att-style="'width: 50%;' if delivery else 'width: 100%;'"
+                                            />
+                                            <col />
+                                        </colgroup>
+                                        <tbody>
+                                            <tr>
+                                                <!-- The gutter is padding on the
+                                                     cell: with table-layout
+                                                     fixed a long name fills its
+                                                     column to the edge and runs
+                                                     straight into the next one. -->
+                                                <td style="vertical-align: top; padding-right: 6mm;">
+                                                    <div class="fi_addr_label" t-if="delivery">Billing Address</div>
+                                                    <div class="fi_addr_label" t-else="">Billing and Delivery Address</div>
+                                                    <div
+                                                        class="fi_addr"
+                                                        t-field="o.partner_id"
+                                                        t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'
+                                                    />
+                                                </td>
+                                                <td style="vertical-align: top;" t-if="delivery">
+                                                    <div class="fi_addr_label">Delivery Address</div>
+                                                    <!-- Name printed separately
+                                                         from the address so the
+                                                         site is not announced by
+                                                         its parent's name, which
+                                                         the block to the left
+                                                         already carries. -->
+                                                    <div class="fi_addr">
+                                                        <div t-out="o._fi_delivery_name()" />
+                                                        <span
+                                                            t-field="o.partner_shipping_id"
+                                                            t-options='{"widget": "contact", "fields": ["address"], "no_marker": True}'
+                                                        />
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                            <!-- The gap is cell padding: a margin on the table,
+                                 or padding on a wrapper inside the cell, is
+                                 dropped here and the detail block rides up into
+                                 the running header. -->
+                            <td style="padding-top: 10px;">
+                                <div>
+                                <table class="fi_box fi_details">
+                                    <colgroup>
+                                        <col style="width: 51.72%;" />
+                                        <col style="width: 48.28%;" />
+                                    </colgroup>
+                                    <tbody>
+                                        <tr t-if="o.name and o.name != '/'">
+                                            <td class="fi_key"><span>Invoice Number</span></td>
+                                            <td><span t-field="o.name" /></td>
+                                        </tr>
+                                        <tr t-if="o.invoice_origin">
+                                            <td class="fi_key"><span>Order Number</span></td>
+                                            <td><span t-field="o.invoice_origin" /></td>
+                                        </tr>
+                                        <tr t-if="o.partner_id.ref">
+                                            <td class="fi_key"><span>Customer Number</span></td>
+                                            <td><span t-field="o.partner_id.ref" /></td>
+                                        </tr>
+                                        <tr t-if="o.partner_id.vat">
+                                            <td class="fi_key"><span>Customer VAT Number</span></td>
+                                            <td><span t-field="o.partner_id.vat" /></td>
+                                        </tr>
+                                        <tr t-if="o.invoice_date">
+                                            <td class="fi_key"><span>Invoice Date</span></td>
+                                            <td><span t-field="o.invoice_date" /></td>
+                                        </tr>
+                                        <tr t-if="o.invoice_payment_term_id">
+                                            <td class="fi_key"><span>Payment Terms</span></td>
+                                            <td><span t-field="o.invoice_payment_term_id.name" /></td>
+                                        </tr>
+                                        <tr t-if="o.invoice_date_due">
+                                            <td class="fi_key"><span>Due Date</span></td>
+                                            <td><span t-field="o.invoice_date_due" /></td>
+                                        </tr>
+                                        <tr t-if="company.fi_invoice_penalty_interest">
+                                            <td class="fi_key"><span>Late Payment Interest</span></td>
+                                            <td><span t-field="company.fi_invoice_penalty_interest" /></td>
+                                        </tr>
+                                        <tr t-if="company.fi_invoice_complaint_period">
+                                            <td class="fi_key"><span>Complaint Period</span></td>
+                                            <td><span t-field="company.fi_invoice_complaint_period" /></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <table class="fi_lines" style="margin-top: 24px;">
+                    <!--
+                        Percentages, not millimetres: the engine ignores mm on
+                        <col> and falls back to laying the table out from its
+                        content. Of the 189 mm block these are 89 / 11 / 12 /
+                        22 / 12 / 20 / 23 mm.
+
+                        Price took 4 mm from the description and 3 from the VAT
+                        rate: at the old width a four-figure price wrapped after
+                        the thousands space. The description is the only column
+                        that can afford to lose room, being the only one whose
+                        content is allowed to run onto a second line.
+                    -->
+                    <colgroup>
+                        <col style="width: 47.26%;" />
+                        <col style="width: 5.82%;" />
+                        <col style="width: 6.35%;" />
+                        <col style="width: 11.44%;" />
+                        <col style="width: 6.44%;" />
+                        <col style="width: 10.58%;" />
+                        <col style="width: 12.11%;" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th><span>Product / Description</span></th>
+                            <th class="fi_r"><span>Qty</span></th>
+                            <th><span>Unit</span></th>
+                            <th class="fi_r"><span>Price</span></th>
+                            <th class="fi_r"><span>VAT %</span></th>
+                            <th class="fi_r"><span>Excl. VAT</span></th>
+                            <th class="fi_r"><span>Total</span></th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr><td colspan="7" /></tr>
+                    </tfoot>
+                    <tbody>
+                        <tr
+                            t-foreach="o.invoice_line_ids.filtered(lambda l: l.display_type in ('product', 'line_section', 'line_note'))"
+                            t-as="line"
+                        >
+                            <t t-if="line.display_type == 'product'">
+                                <td>
+                                    <span t-field="line.name" t-options="{'widget': 'text'}" />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="line.quantity"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td><span t-field="line.product_uom_id.name" /></td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="line.price_unit"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <!-- Percentage taxes only: a fixed-amount tax
+                                     has no rate to put in this column. -->
+                                <td class="fi_r">
+                                    <t
+                                        t-foreach="line.tax_ids.filtered(lambda t: t.amount_type == 'percent')"
+                                        t-as="tax"
+                                    ><span
+                                            t-out="tax.amount"
+                                            t-options='{"widget": "float", "precision": 1}'
+                                        /><t t-if="not tax_last">, </t></t>
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="line.price_subtotal"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="line.price_total"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                            </t>
+                            <t t-else="">
+                                <td
+                                    colspan="7"
+                                    t-att-class="'fi_b' if line.display_type == 'line_section' else 'fst-italic'"
+                                >
+                                    <span t-field="line.name" t-options="{'widget': 'text'}" />
+                                </td>
+                            </t>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!--
+                    The totals sit in the same panel as everything else, so the
+                    page reads as one design rather than four. The block is
+                    half-width and pushed right, which is where the reference
+                    puts it.
+                -->
+                <table
+                    class="fi_box fi_totals avoid-page-break-inside"
+                    style="margin-top: 34px; width: 45% !important; margin-left: 55% !important;"
+                >
+                    <colgroup>
+                        <col style="width: 55%;" />
+                        <col style="width: 30%;" />
+                        <col style="width: 15%;" />
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <td><span>Total (VAT 0%)</span></td>
+                            <td class="fi_r">
+                                <span
+                                    t-out="o.amount_untaxed"
+                                    t-options='{"widget": "float", "precision": 2}'
+                                />
+                            </td>
+                            <td class="fi_cur"><span t-field="o.currency_id.name" /></td>
+                        </tr>
+                        <tr>
+                            <td><span>VAT</span></td>
+                            <td class="fi_r">
+                                <span
+                                    t-out="o.amount_tax"
+                                    t-options='{"widget": "float", "precision": 2}'
+                                />
+                            </td>
+                            <td class="fi_cur"><span t-field="o.currency_id.name" /></td>
+                        </tr>
+                        <tr>
+                            <td><span>Total (incl. VAT)</span></td>
+                            <td class="fi_r">
+                                <span
+                                    t-out="o.amount_total"
+                                    t-options='{"widget": "float", "precision": 2}'
+                                />
+                            </td>
+                            <td class="fi_cur"><span t-field="o.currency_id.name" /></td>
+                        </tr>
+                        <!-- An invoice that has been paid against doubles as
+                             the customer's receipt, so it states what was paid
+                             and when rather than leaving them to account for
+                             the difference between the total and what is due.
+                             The date belongs to the label: it is not a figure,
+                             and in the amount column it left the block's right
+                             edge ragged against the rows above and below. -->
+                        <t t-set="paid_date" t-value="o._fi_payment_date()" />
+                        <tr class="fi_sum" t-if="paid_date">
+                            <td>
+                                <span>Paid</span>
+                                <span t-out="paid_date" t-options='{"widget": "date"}' />
+                            </td>
+                            <td class="fi_r">
+                                <span
+                                    t-out="o._fi_amount_paid()"
+                                    t-options='{"widget": "float", "precision": 2}'
+                                />
+                            </td>
+                            <td class="fi_cur"><span t-field="o.currency_id.name" /></td>
+                        </tr>
+                        <tr class="fi_sum" t-if="o.state == 'posted'">
+                            <td><span>Total Due</span></td>
+                            <td class="fi_r">
+                                <span
+                                    t-out="o._fi_amount_due()"
+                                    t-options='{"widget": "float", "precision": 2}'
+                                />
+                            </td>
+                            <td class="fi_cur"><span t-field="o.currency_id.name" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            <!--
+                wkhtmltopdf renders the footer once per page and passes that
+                page's number in the query string, so the script below keeps the
+                payment slip on page one — where the reference puts it — and
+                leaves later pages empty. The page count is already in the
+                running header, so there is nothing to put back.
+            -->
+            <div class="footer fi_inv">
+                <t t-call="goodahead_finnish_invoice.invoice_styles" />
+                <div class="fi_page">
+                <div id="fi_footer_first">
+                    <t t-set="vat_rows" t-value="o._fi_vat_breakdown()" />
+                    <table class="fi_box fi_vat" t-if="vat_rows">
+                        <colgroup>
+                            <col style="width: 30%;" />
+                            <col style="width: 23%;" />
+                            <col style="width: 21%;" />
+                            <col style="width: 26%;" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th><span>VAT Breakdown</span></th>
+                                <th class="fi_r"><span>Net</span></th>
+                                <th class="fi_r"><span>VAT</span></th>
+                                <th class="fi_r"><span>Gross</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="vat_rows" t-as="vat_row">
+                                <td><span t-out="vat_row['name']" /></td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="vat_row['net']"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="vat_row['vat']"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="vat_row['gross']"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                            </tr>
+                            <tr class="fi_sum">
+                                <td><span>Total</span></td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="o.amount_untaxed"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="o.amount_tax"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                                <td class="fi_r">
+                                    <span
+                                        t-out="o.amount_total"
+                                        t-options='{"widget": "float", "precision": 2}'
+                                    />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <t t-set="pay_bank" t-value="o._fi_payment_bank()" />
+                    <table class="fi_box fi_pay" style="margin-top: 30px;" t-if="pay_bank">
+                        <!--
+                            Of the 189 mm block: 42 / 48 / 21 / 26 / 23 / 29 mm,
+                            each column the widest value it has had to hold plus
+                            its cell padding - and nothing on the slip wraps, so
+                            a column too narrow runs wide rather than breaking.
+                            The bank's name is the only unbounded value: "Northern
+                            Home Goods Oy" needs the 42 mm and "OP Yrityspankki"
+                            fits inside it. A 22-character IBAN at 9pt needs every
+                            millimetre of its 48, and the total carries the
+                            currency, so "3 880,41 EUR" needs 29. The BIC, the
+                            reference and the due date are bounded and gave up
+                            the rest.
+                        -->
+                        <colgroup>
+                            <col style="width: 22.22%;" />
+                            <col style="width: 25.40%;" />
+                            <col style="width: 11.11%;" />
+                            <col style="width: 13.76%;" />
+                            <col style="width: 12.17%;" />
+                            <col style="width: 15.34%;" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th><span>Bank</span></th>
+                                <th><span>IBAN</span></th>
+                                <th><span>BIC</span></th>
+                                <th><span>Reference</span></th>
+                                <th><span>Due Date</span></th>
+                                <th><span>Total</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span t-field="pay_bank.bank_id.name" /></td>
+                                <td><span t-field="pay_bank.acc_number" /></td>
+                                <td><span t-field="pay_bank.bank_bic" /></td>
+                                <td><span t-field="o.payment_reference" /></td>
+                                <td><span t-field="o.invoice_date_due" /></td>
+                                <!--
+                                    Left, like every other cell in this row.
+
+                                    The slip has to state the figure the bar code
+                                    carries, or the two payment instructions on
+                                    the page disagree. The bar code can only hold
+                                    euro, so a non-euro invoice shows the
+                                    company-currency equivalent here as well.
+                                -->
+                                <td>
+                                    <t
+                                        t-if="o.fi_bank_barcode and o.currency_id.name != 'EUR'"
+                                    >
+                                        <span
+                                            t-out="o._fi_barcode_amount()"
+                                            t-options='{"widget": "float", "precision": 2}'
+                                        />
+                                        <span t-out="'EUR'" />
+                                    </t>
+                                    <t t-else="">
+                                        <span
+                                            t-out="o._fi_amount_due()"
+                                            t-options='{"widget": "float", "precision": 2}'
+                                        />
+                                        <span t-field="o.currency_id.name" />
+                                    </t>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Without a bar code the legal line takes the whole width
+                         rather than leaving a hole where the code would be. -->
+                    <table style="margin-top: 16px;">
+                        <colgroup>
+                            <col
+                                t-att-style="'width: 50%;' if o.fi_bank_barcode else 'width: 0;'"
+                            />
+                            <col />
+                        </colgroup>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <img
+                                        t-if="o.fi_bank_barcode"
+                                        class="fi_barcode"
+                                        t-att-src="'/report/barcode?barcode_type=Code128&amp;value=%s&amp;width=1200&amp;height=90&amp;humanreadable=0' % o.fi_bank_barcode"
+                                        t-att-alt="o.fi_bank_barcode"
+                                    />
+                                </td>
+                                <!-- Each line stays on one source line: a newline
+                                     before punctuation renders as a space, which
+                                     reads as "Company , Street". -->
+                                <td class="fi_legal">
+                                    <div><span t-field="company.name" />, <span
+                                            t-field="company.street"
+                                        />, <span t-field="company.zip" /> <span
+                                            t-field="company.city"
+                                        /></div>
+                                    <div><t t-if="company.company_registry"><span
+                                                >Business ID</span>: <span
+                                                t-field="company.company_registry"
+                                            />, </t><t t-if="company.vat"><span
+                                                >VAT Number</span>: <span t-field="company.vat" /></t></div>
+                                    <div t-if="company.phone or company.email"><span
+                                            t-field="company.phone"
+                                        /><t t-if="company.phone and company.email">, </t><span
+                                            t-field="company.email"
+                                        /></div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                </div>
+
+                <script type="text/javascript">
+                    (function () {
+                        var params = {};
+                        var pairs = document.location.search.substring(1).split('&amp;');
+                        for (var i = 0; i &lt; pairs.length; i++) {
+                            var kv = pairs[i].split('=', 2);
+                            params[kv[0]] = unescape(kv[1]);
+                        }
+                        if (params['sitepage'] &amp;&amp; params['sitepage'] !== '1') {
+                            var first = document.getElementById('fi_footer_first');
+                            if (first) { first.style.display = 'none'; }
+                        }
+                    })();
+                </script>
+            </div>
+        </template>
+
+        <template id="report_invoice" inherit_id="account.report_invoice">
+
+            <!--
+                Size the band the page footer is drawn into. The VAT breakdown
+                lives there and grows by a row per VAT rate, so a fixed margin on
+                the paper format pushes the payment slip and the bar code off the
+                page as soon as an invoice carries more than one rate. 64 mm
+                covers the fixed part, 8 mm buys each rate's row, and the widest
+                document in the batch sets it — web.report_layout reads the value
+                off the <html> tag, so it has to be known before the container is
+                called.
+            -->
+            <xpath expr="//t[@t-call='web.html_container']" position="before">
+                <t
+                    t-if="docs and docs[:1]._get_name_invoice_report() == 'goodahead_finnish_invoice.report_invoice_document'"
+                >
+                    <t
+                        t-set="fi_vat_rows"
+                        t-value="max([len(d._fi_vat_breakdown()) for d in docs] or [1])"
+                    />
+                    <t
+                        t-set="data_report_margin_bottom"
+                        t-value="64 + 8 * fi_vat_rows"
+                    />
+                </t>
+            </xpath>
+
+            <xpath expr='//t[@t-call="account.report_invoice_document"]' position="after">
+                <t
+                    t-elif="o._get_name_invoice_report() == 'goodahead_finnish_invoice.report_invoice_document'"
+                    t-call="goodahead_finnish_invoice.report_invoice_document"
+                    t-lang="lang"
+                />
+            </xpath>
+        </template>
+
+    </data>
+</odoo>

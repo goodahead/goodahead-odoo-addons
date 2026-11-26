@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-05 entry in Invoicing settings (an app only accounting administrators open). -->
+    <record id="res_config_settings_view_form_apix" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.goodahead.apix</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@id='account_vendor_bills']" position="after">
+                <block title="APIX e-invoicing" id="goodahead_apix_settings">
+                    <setting id="goodahead_apix_connection" string="APIX connection"
+                             help="Transfer credentials, environment and connection check for this company.">
+                        <field name="apix_connection_id" invisible="1"/>
+                        <div class="content-group">
+                            <div class="mt8">
+                                <span invisible="apix_connection_id">Not connected</span>
+                                <field name="apix_status" widget="badge" invisible="not apix_connection_id"
+                                       decoration-success="apix_status == 'working'"
+                                       decoration-danger="apix_status == 'rejected'"
+                                       decoration-muted="apix_status == 'unchecked'"/>
+                            </div>
+                            <div class="text-muted" invisible="not apix_status_message">
+                                <field name="apix_status_message"/>
+                            </div>
+                            <button name="action_open_apix_connection" type="object"
+                                    string="Configure APIX connection" class="btn-link ps-0" icon="oi-arrow-right"/>
+                        </div>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

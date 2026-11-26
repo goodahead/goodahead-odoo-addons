@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: an INV02 credit note stated the guideline way (§10.5:
+     "Always a zero or a negative total sum"), negative quantity and amounts. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode CodeListAgencyIdentifier="SPY">INV02</InvoiceTypeCode>
+    <InvoiceTypeText>HYVITYSLASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>10050</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261118</InvoiceDate>
+    <OriginalInvoiceNumber>10045</OriginalInvoiceNumber>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">-100,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">-25,50</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">-125,50</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">-100,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">-25,50</VatRateAmount>
+    </VatSpecificationDetails>
+    <InvoiceFreeText>Hyvitys palautetuista tuotteista</InvoiceFreeText>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-001</ArticleIdentifier>
+    <ArticleName>Toimistotuoli, palautus</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">-2</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">50,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">-25,50</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">-100,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">-125,50</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261118</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">-125,50</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261118</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

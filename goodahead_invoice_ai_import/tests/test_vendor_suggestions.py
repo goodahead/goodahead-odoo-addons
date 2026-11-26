@@ -375,7 +375,7 @@ class TestTheNearDuplicateNames(_SuggestionCase):
             {
                 "name": "ZZACME - Smith reps",
                 "is_company": True,
-                "supplier_rank": 86,
+                "supplier_rank": 63,
             }
         )
 
@@ -561,7 +561,7 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         from lxml import etree
 
         action = self.env.ref(
-            "goodahead_invoice_ai_import.action_vendor_data_suggestion"
+            "goodahead_invoice_import.action_vendor_data_suggestion"
         )
         context = json.loads(action.context.replace("'", '"'))
         wanted = [
@@ -796,7 +796,7 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         queue = etree.fromstring(
             self.Suggestion.get_view(
                 self.env.ref(
-                    "goodahead_invoice_ai_import."
+                    "goodahead_invoice_import."
                     "view_vendor_data_suggestion_list"
                 ).id,
                 "list",
@@ -811,7 +811,7 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         form = etree.fromstring(
             Review.get_view(
                 self.env.ref(
-                    "goodahead_invoice_ai_import.view_vendor_data_review_form"
+                    "goodahead_invoice_import.view_vendor_data_review_form"
                 ).id,
                 "form",
             )["arch"]

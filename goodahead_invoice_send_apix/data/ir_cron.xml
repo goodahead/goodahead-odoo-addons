@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- apix.send.sweep.v1 (events.md, Flow E): every minute, release every
+         invoice whose send ran too long or whose background job ended
+         without sending. A failed run is repeated by the next one. -->
+    <record id="ir_cron_send_sweep" model="ir.cron">
+        <field name="name">APIX sending: release hung and lost sends</field>
+        <field name="model_id" ref="model_goodahead_invoice_send_attempt"/>
+        <field name="state">code</field>
+        <field name="code">model._ledger_sweep()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+</odoo>

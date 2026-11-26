@@ -1,0 +1,179 @@
+<!-- Invented fixture: all parties, identifiers and amounts are artificial. -->
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:eb="http://www.oasis-open.org/committees/ebxml-msg/schema/msg-header-2_0.xsd">
+  <SOAP-ENV:Header>
+    <eb:MessageHeader SOAP-ENV:mustUnderstand="1">
+      <eb:From>
+        <eb:PartyId>003700000035</eb:PartyId>
+        <eb:Role>Sender</eb:Role>
+      </eb:From>
+      <eb:From>
+        <eb:PartyId>EXMPFIHH</eb:PartyId>
+        <eb:Role>Intermediator</eb:Role>
+      </eb:From>
+      <eb:To>
+        <eb:PartyId>003700000051</eb:PartyId>
+        <eb:Role>Receiver</eb:Role>
+      </eb:To>
+      <eb:To>
+        <eb:PartyId>EXMBFIHH</eb:PartyId>
+        <eb:Role>Intermediator</eb:Role>
+      </eb:To>
+      <eb:CPAId>yoursandmycpa</eb:CPAId>
+      <eb:ConversationId/>
+      <eb:Service>Routing</eb:Service>
+      <eb:Action>ProcessInvoice</eb:Action>
+      <eb:MessageData>
+        <eb:MessageId>EX-MSG-0001</eb:MessageId>
+        <eb:Timestamp>2026-11-20T10:00:00</eb:Timestamp>
+        <eb:RefToMessageId/>
+      </eb:MessageData>
+    </eb:MessageHeader>
+  </SOAP-ENV:Header>
+  <SOAP-ENV:Body>
+    <eb:Manifest eb:id="Manifest" eb:version="2.0">
+      <eb:Reference eb:id="Finvoice" xlink:href="EX-MSG-0001">
+        <eb:schema eb:location="http://www.finvoice.info/finvoice.xsd" eb:version="3.0"/>
+      </eb:Reference>
+    </eb:Manifest>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="Finvoice.xsl" type="text/xsl"?>
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>B-1</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261120</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">10,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">2,55</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">12,55</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">10,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">2,55</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleName>Tuote A</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">1</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">10,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">2,55</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">10,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261120</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">10001235</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">12,55</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261204</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:eb="http://www.oasis-open.org/committees/ebxml-msg/schema/msg-header-2_0.xsd">
+  <SOAP-ENV:Header>
+    <eb:MessageHeader SOAP-ENV:mustUnderstand="1">
+      <eb:From>
+        <eb:PartyId>003700000035</eb:PartyId>
+        <eb:Role>Sender</eb:Role>
+      </eb:From>
+      <eb:To>
+        <eb:PartyId>003700000051</eb:PartyId>
+        <eb:Role>Receiver</eb:Role>
+      </eb:To>
+      <eb:CPAId>yoursandmycpa</eb:CPAId>
+      <eb:Service>Routing</eb:Service>
+      <eb:Action>ProcessInvoice</eb:Action>
+      <eb:MessageData>
+        <eb:MessageId>EX-MSG-0002</eb:MessageId>
+        <eb:Timestamp>2026-11-20T10:00:01</eb:Timestamp>
+      </eb:MessageData>
+    </eb:MessageHeader>
+  </SOAP-ENV:Header>
+  <SOAP-ENV:Body>
+    <eb:Manifest eb:id="Manifest" eb:version="2.0">
+      <eb:Reference eb:id="Finvoice" xlink:href="EX-MSG-0002">
+        <eb:schema eb:location="http://www.finvoice.info/finvoice.xsd" eb:version="3.0"/>
+      </eb:Reference>
+    </eb:Manifest>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="Finvoice.xsl" type="text/xsl"?>
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>B-2</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261120</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">20,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">5,10</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">25,10</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">20,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">5,10</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleName>Tuote B</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">2</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">10,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">5,10</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">20,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261120</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">20004565</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">25,10</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261204</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

@@ -25,7 +25,7 @@ class TestVendorBillCount(TransactionCase):
         super().setUpClass()
         cls.AM = cls.env["account.move"]
         cls.Partner = cls.env["res.partner"]
-        cls.Import = cls.env["ai.invoice.import"]
+        cls.Import = cls.env["goodahead.invoice.import"]
         cls.journal = cls.env["account.journal"].search(
             [("type", "=", "purchase"), ("company_id", "=", cls.env.company.id)],
             limit=1,

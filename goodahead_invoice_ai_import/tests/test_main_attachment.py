@@ -22,7 +22,7 @@ from unittest.mock import patch
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
@@ -31,7 +31,7 @@ from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
     SUBSTITUTE_PDF_READER_18,
     SUBSTITUTE_PDF_READERS,
 )
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -148,7 +148,7 @@ class TestMainAttachmentIsVendorPdf(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {
                 "name": VENDOR_PDF_NAME,
                 "company_id": self.company.id,
@@ -680,7 +680,7 @@ class TestSubstitutePdfPolicy(TransactionCase):
             )
 
     def _migration(
-        self, version="19.0.3.1.0", filename="post-disable-substitute-pdf.py"
+        self, version="18.0.3.1.0", filename="post-disable-substitute-pdf.py"
     ):
         # `migrations/` is not a package, so load the script by path.
         import importlib.util
@@ -703,12 +703,12 @@ class TestSubstitutePdfPolicy(TransactionCase):
         expected = "True" if self._core_reads_it() else None
 
         migration = self._migration()
-        migration.migrate(self.env.cr, "19.0.3.0.0")
+        migration.migrate(self.env.cr, "18.0.3.0.0")
         self.env.invalidate_all()
         self.assertEqual(config.get_param(PARAM, default=None), expected)
 
         # Second run.
-        migration.migrate(self.env.cr, "19.0.3.1.0")
+        migration.migrate(self.env.cr, "18.0.3.1.0")
         self.env.invalidate_all()
         self.assertEqual(
             config.get_param(PARAM, default=None),
@@ -724,7 +724,7 @@ class TestSubstitutePdfPolicy(TransactionCase):
         self.env.invalidate_all()
         self.assertEqual(config.get_param(PARAM), "False", "CONTROL: starts False")
 
-        self._migration().migrate(self.env.cr, "19.0.3.0.0")
+        self._migration().migrate(self.env.cr, "18.0.3.0.0")
         self.env.invalidate_all()
         self.assertEqual(
             config.get_param(PARAM),
@@ -765,11 +765,11 @@ class TestSubstitutePdfPolicy(TransactionCase):
         script = self._migration(
             version="0.0.0", filename="post-reassert-substitute-pdf-policy.py"
         )
-        script.migrate(self.env.cr, "19.0.3.11.0")
+        script.migrate(self.env.cr, "18.0.3.11.0")
         self.env.invalidate_all()
         self.assertEqual(config.get_param(PARAM, default=None), expected)
 
-        script.migrate(self.env.cr, "19.0.3.12.0")
+        script.migrate(self.env.cr, "18.0.3.12.0")
         self.env.invalidate_all()
         self.assertEqual(
             config.get_param(PARAM, default=None),

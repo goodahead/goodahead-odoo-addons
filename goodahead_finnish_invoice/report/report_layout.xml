@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <data>
+
+        <!--
+            The page footer holds the VAT breakdown, and that table grows by a
+            row for every VAT rate on the invoice, so the band reserved for it
+            cannot be a constant on the paper format: a three-rate invoice
+            pushes the payment slip and the bar code off the bottom of the page.
+
+            _build_wkhtmltopdf_args already honours a data-report-margin-bottom
+            attribute on the root <html>, but web.report_layout only emits the
+            top margin, header spacing, dpi and landscape. Adding the missing
+            attribute lets the document compute its own bottom margin the same
+            way it sets its top one. Reports that leave the variable unset render
+            exactly as before: t-att drops an attribute whose value is falsy.
+        -->
+        <template id="report_layout" inherit_id="web.report_layout">
+            <xpath expr="//html" position="attributes">
+                <attribute
+                    name="t-att-data-report-margin-bottom"
+                >data_report_margin_bottom</attribute>
+            </xpath>
+        </template>
+
+    </data>
+</odoo>

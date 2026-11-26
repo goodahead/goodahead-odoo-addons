@@ -23,7 +23,7 @@ from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools.safe_eval import safe_eval
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 from odoo.addons.goodahead_invoice_ai_import.tests.posting import post_bill
@@ -112,7 +112,7 @@ class _UnmatchedHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-ui.pdf",
                 "company_id": self.company.id,
@@ -532,7 +532,7 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         vendor = move.partner_id
         count = self.Partner.with_context(active_test=False).search_count([])
 
-        second = self._run_import()
+        second = self._run_import(dict(self._extracted(), invoice_number="ZZ-UI-2"))
 
         self.assertEqual(
             self.Partner.with_context(active_test=False).search_count([]),
@@ -637,7 +637,7 @@ class TestTheCreateContactButton(_UnmatchedHarness):
 
     def test_it_refuses_a_bill_with_no_readable_seller_name(self):
         move = self._run_import()
-        self.env["ai.invoice.import"].search(
+        self.env["goodahead.invoice.import"].search(
             [("move_id", "=", move.id)]
         ).extraction_data = '{"seller": {}}'
         self.env["ir.attachment"].search(

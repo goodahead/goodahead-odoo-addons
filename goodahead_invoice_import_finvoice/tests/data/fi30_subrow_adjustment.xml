@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: two priced rows (360,00) and a SubInvoiceRow carrying a
+     real adjustment, a credit for an earlier payment (-60,00), which the
+     stated total (300,00) includes. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode CodeListAgencyIdentifier="SPY">INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>10046</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261116</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">300,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">76,50</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">376,50</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">300,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">76,50</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-001</ArticleIdentifier>
+    <ArticleName>Toimistotuoli</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">2</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">120,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">61,20</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">240,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">301,20</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-002</ArticleIdentifier>
+    <ArticleName>Asennustyö</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="h">1,5</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">80,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">30,60</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">120,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">150,60</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <SubInvoiceRow>
+      <SubArticleName>Ennakkomaksu</SubArticleName>
+      <SubRowFreeText>Hyvitys maksetusta ennakosta</SubRowFreeText>
+      <SubRowVatRatePercent>25,5</SubRowVatRatePercent>
+      <SubRowVatAmount AmountCurrencyIdentifier="EUR">-15,30</SubRowVatAmount>
+      <SubRowVatExcludedAmount AmountCurrencyIdentifier="EUR">-60,00</SubRowVatExcludedAmount>
+      <SubRowAmount AmountCurrencyIdentifier="EUR">-75,30</SubRowAmount>
+    </SubInvoiceRow>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261116</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">10001248</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">376,50</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261130</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

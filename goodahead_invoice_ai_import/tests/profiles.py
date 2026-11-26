@@ -26,7 +26,7 @@ over a gate, and a method gate over a class gate.
 
 import functools
 
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     KNOWN_PROFILES,
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,

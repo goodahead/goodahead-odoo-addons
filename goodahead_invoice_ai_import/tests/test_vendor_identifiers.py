@@ -18,10 +18,10 @@ from lxml import etree
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
 )
@@ -608,7 +608,7 @@ class TestNoVendorIsInvented(_NoClaudeMixin, TransactionCase):
         Partner = self.Partner.with_context(active_test=False)
         before = Partner.search_count([])
         extracted = _extraction(
-            name="ZZ Fleet Card Bank (fuel)", vat="DE811569869",
+            name="ZZ Fleet Card Bank (fuel)", vat="DE000000000",
             country_code="DE",
         )
         journal = self.env["account.journal"].search(
@@ -631,7 +631,7 @@ class TestNoVendorIsInvented(_NoClaudeMixin, TransactionCase):
         Partner = self.Partner.with_context(active_test=False)
         before = Partner.search_count([])
         extracted = _extraction(
-            name="ZZ Genuine Peppol GmbH", vat="DE811569869", country_code="DE"
+            name="ZZ Genuine Peppol GmbH", vat="DE000000000", country_code="DE"
         )
         xml_bytes = self.AM._ai_generate_ubl_from_extracted(
             extracted, self.env.company
@@ -676,7 +676,7 @@ class TestVendorCandidates(_NoClaudeMixin, TransactionCase):
             {
                 "name": "ZZKESTREL - Midwest reps",
                 "is_company": True,
-                "supplier_rank": 86,
+                "supplier_rank": 63,
             }
         )
         cls.decoy = cls.Partner.create(

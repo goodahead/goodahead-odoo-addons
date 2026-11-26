@@ -15,7 +15,7 @@ from unittest.mock import patch
 from odoo import Command
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -39,8 +39,8 @@ def _line(name, qty, price, total, description=None, category="goods"):
 RESTAURANT_RECEIPT = {
     "type": "Invoice",
     "invoice_number": "ZZ-000417",
-    "issue_date": "2026-10-07",
-    "due_date": "2026-10-07",
+    "issue_date": "2026-01-15",
+    "due_date": "2026-01-15",
     "currency": "USD",
     "currency_symbol": "$",
     "seller": {
@@ -74,13 +74,13 @@ RESTAURANT_RECEIPT = {
     "payment_means_code": None,
     "note": "The invoice prints one tax amount but no per-line tax.",
     "lines": [
-        _line("ZZ Roast Chicken Platter", 3, 18.45, 55.35, "Choose Size: Whole"),
-        _line("ZZ Garden Rice", 4, 9.8, 39.2),
-        _line("ZZ Black Bean Stew", 2, 8.65, 17.3, "Size: Large"),
+        _line("ZZ Club Sandwich", 3, 18.45, 55.35, "Bread: Sourdough"),
+        _line("ZZ Soup of the Day", 4, 9.8, 39.2),
+        _line("ZZ French Fries", 2, 8.65, 17.3, "Size: Large"),
         _line("ZZ Side Salad", 2, 6.95, 13.9, "Size: Regular"),
-        _line("ZZ Fried Plantains", 3, 6.4, 19.2),
-        _line("ZZ Bottled Lemonade", 4, 4.1, 16.4),
-        _line("Open $ Check", 1, -10.0, -10.0, "Deduction applied before tax",
+        _line("ZZ Onion Rings", 3, 6.4, 19.2),
+        _line("ZZ Iced Tea", 4, 4.1, 16.4),
+        _line("House Credit", 1, -10.0, -10.0, "Deduction applied before tax",
               category="discounts"),
     ],
     # Invented figures, chosen so that the printed tax (13.46 on 151.35) gives
@@ -154,7 +154,7 @@ class TestTheBillCarriesThePdfLinesOnly(TransactionCase):
             {"name": "receipt.pdf", "raw": b"%PDF-1.4 fake",
              "mimetype": "application/pdf"}
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {
                 "name": "receipt.pdf",
                 "company_id": self.company.id,
@@ -170,7 +170,7 @@ class TestTheBillCarriesThePdfLinesOnly(TransactionCase):
             side_effect=AssertionError("the re-import must not call Claude"),
         ):
             rec.action_reimport_from_json()
-        self.assertEqual(rec.state, "done", rec.error_message or "")
+        self.assertEqual(rec.state, "imported", rec.error_message or "")
         self.assertTrue(rec.move_id, "the re-import produced no bill")
         return rec.move_id
 
@@ -379,7 +379,7 @@ class TestTheBillCarriesThePdfLinesOnly(TransactionCase):
             {"name": "receipt.pdf", "raw": b"%PDF-1.4 fake",
              "mimetype": "application/pdf"}
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {"name": "receipt.pdf", "company_id": self.company.id,
              "pdf_attachment_id": att.id}
         )
@@ -408,7 +408,7 @@ class TestTheBillCarriesThePdfLinesOnly(TransactionCase):
             {"name": "receipt.pdf", "raw": b"%PDF-1.4 fake",
              "mimetype": "application/pdf"}
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {"name": "receipt.pdf", "company_id": self.company.id,
              "pdf_attachment_id": att.id, "state": "failed",
              "extraction_data": json.dumps(extracted)}

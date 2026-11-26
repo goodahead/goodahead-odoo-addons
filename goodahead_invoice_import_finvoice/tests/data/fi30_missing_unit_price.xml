@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: a row with a quantity and no unit price, and a row with an
+     amount and no quantity element at all. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000008-6</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Consulting Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000086</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>C-2026-301</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261105</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">282,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">71,91</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">353,91</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">282,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">71,91</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleName>Konsultointi</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="HUR">3</InvoicedQuantity>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">68,85</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">270,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">338,85</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Käsittelymaksu</ArticleName>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">3,06</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">12,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">15,06</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261105</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails/>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Consulting Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI7512345600000007</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="ISO">RF661234567</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">353,91</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261119</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

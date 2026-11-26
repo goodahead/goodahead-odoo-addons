@@ -1,0 +1,1488 @@
+{
+ "fi13_invoice.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-10-15",
+    "invoice_number": "13-1",
+    "issue_date": "2026-10-01",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 60.0,
+      "name": "Hylly",
+      "price_unit": 50.0,
+      "product_code": "EX-100",
+      "quantity": 2.0,
+      "tax_amount": null,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 15.0,
+      "name": "Kiinnike",
+      "price_unit": 25.0,
+      "product_code": "EX-200",
+      "quantity": 1.0,
+      "tax_amount": null,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": null,
+    "seller": {
+     "bic": null,
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": null,
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "1.3",
+     "warnings": [
+      "No VAT rate on the rows and no VAT breakdown: 25.5 % was taken from the header's VAT and VAT-exclusive totals."
+     ]
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 19.13,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 75.0
+     }
+    ],
+    "totals": {
+     "line_extension": 75.0,
+     "payable": 94.13,
+     "tax_exclusive": 75.0,
+     "tax_inclusive": 94.13
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi201_invoice.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-15",
+    "invoice_number": "201-55",
+    "issue_date": "2026-11-01",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 80.0,
+      "name": "Vasara",
+      "price_unit": 20.0,
+      "product_code": "VS-10",
+      "quantity": 4.0,
+      "tax_amount": 20.4,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "40001111",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000002-7",
+     "city": "Oulu",
+     "country_code": "FI",
+     "email": null,
+     "iban": "FI7512345600000007",
+     "name": "Example Hardware Oy",
+     "phone": null,
+     "postal_code": "90100",
+     "street": "Rautatie 9",
+     "vat": "FI00000027",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "2.01",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 20.4,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 80.0
+     }
+    ],
+    "totals": {
+     "line_extension": 80.0,
+     "payable": 100.4,
+     "tax_exclusive": 80.0,
+     "tax_inclusive": 100.4
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi20_invoice.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-10-29",
+    "invoice_number": "20-118",
+    "issue_date": "2026-10-15",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 100.0,
+      "name": "Koulutus",
+      "price_unit": 100.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "HUR",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 30.0,
+      "name": "Kurssimateriaali",
+      "price_unit": 15.0,
+      "product_code": null,
+      "quantity": 2.0,
+      "tax_amount": 3.0,
+      "tax_category": "S",
+      "tax_percent": 10.0,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 10.0,
+      "name": "Tilavuokra",
+      "price_unit": 10.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": null,
+      "tax_category": "S",
+      "tax_percent": 14.0,
+      "unit_code": "DAY",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": null,
+    "seller": {
+     "bic": null,
+     "business_id": "0000008-6",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI7512345600000007",
+     "name": "Example Consulting Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000086",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "2.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 100.0
+     },
+     {
+      "tax_amount": 3.0,
+      "tax_category": "S",
+      "tax_percent": 10.0,
+      "taxable_amount": 30.0
+     },
+     {
+      "tax_amount": 1.4,
+      "tax_category": "S",
+      "tax_percent": 14.0,
+      "taxable_amount": 10.0
+     }
+    ],
+    "totals": {
+     "line_extension": 140.0,
+     "payable": 169.9,
+     "tax_exclusive": 140.0,
+     "tax_inclusive": 169.9
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_business_id_in_vat_field.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-12-02",
+    "invoice_number": "T-2026-0091",
+    "issue_date": "2026-11-02",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 100.0,
+      "name": "Huoltopalvelu",
+      "price_unit": 100.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "20004565",
+    "seller": {
+     "bic": "SELLFIHH",
+     "business_id": "0000001-9",
+     "city": "Tampere",
+     "country_code": "FI",
+     "email": null,
+     "iban": "FI5912345600000004",
+     "name": "Example Trading Oy",
+     "phone": null,
+     "postal_code": "33100",
+     "street": "Kauppakatu 5",
+     "vat": "FI00000019",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 100.0
+     }
+    ],
+    "totals": {
+     "line_extension": 100.0,
+     "payable": 125.5,
+     "tax_exclusive": 100.0,
+     "tax_inclusive": 125.5
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_credit_note_negative.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-18",
+    "invoice_number": "10050",
+    "issue_date": "2026-11-18",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 100.0,
+      "name": "Toimistotuoli, palautus",
+      "price_unit": 50.0,
+      "product_code": "ART-001",
+      "quantity": 2.0,
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": "Hyvitys palautetuista tuotteista",
+    "payment_reference": null,
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV02",
+     "original_invoice_number": "10045",
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": true,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 100.0
+     }
+    ],
+    "totals": {
+     "line_extension": 100.0,
+     "payable": 125.5,
+     "tax_exclusive": 100.0,
+     "tax_inclusive": 125.5
+    },
+    "type": "CreditNote"
+   }
+  }
+ ],
+ "fi30_credit_note_positive.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-19",
+    "invoice_number": "10051",
+    "issue_date": "2026-11-19",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 40.0,
+      "name": "Hinnanalennus",
+      "price_unit": 40.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 10.2,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": null,
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV02",
+     "original_invoice_number": "10046",
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 10.2,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 40.0
+     }
+    ],
+    "totals": {
+     "line_extension": 40.0,
+     "payable": 50.2,
+     "tax_exclusive": 40.0,
+     "tax_inclusive": 50.2
+    },
+    "type": "CreditNote"
+   }
+  }
+ ],
+ "fi30_missing_unit_price.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-19",
+    "invoice_number": "C-2026-301",
+    "issue_date": "2026-11-05",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 270.0,
+      "name": "Konsultointi",
+      "price_unit": 90.0,
+      "product_code": null,
+      "quantity": 3.0,
+      "tax_amount": 68.85,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "HUR",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 12.0,
+      "name": "Käsittelymaksu",
+      "price_unit": 12.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 3.06,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": null,
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "RF661234567",
+    "seller": {
+     "bic": null,
+     "business_id": "0000008-6",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI7512345600000007",
+     "name": "Example Consulting Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000086",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 71.91,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 282.0
+     }
+    ],
+    "totals": {
+     "line_extension": 282.0,
+     "payable": 353.91,
+     "tax_exclusive": 282.0,
+     "tax_inclusive": 353.91
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_multi_rate.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-30",
+    "invoice_number": "10046",
+    "issue_date": "2026-11-16",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 40.0,
+      "name": "Kirja",
+      "price_unit": 20.0,
+      "product_code": null,
+      "quantity": 2.0,
+      "tax_amount": 4.0,
+      "tax_category": "S",
+      "tax_percent": 10.0,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 30.0,
+      "name": "Elintarvike",
+      "price_unit": 10.0,
+      "product_code": null,
+      "quantity": 3.0,
+      "tax_amount": 4.2,
+      "tax_category": "S",
+      "tax_percent": 14.0,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 100.0,
+      "name": "Laite",
+      "price_unit": 100.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 15.0,
+      "name": "Vakuutus",
+      "price_unit": 15.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 0.0,
+      "tax_category": "E",
+      "tax_percent": 0.0,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 5.0,
+      "name": "Postimaksu",
+      "price_unit": 5.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 0.0,
+      "tax_category": "Z",
+      "tax_percent": 0.0,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "10001235",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 4.0,
+      "tax_category": "S",
+      "tax_percent": 10.0,
+      "taxable_amount": 40.0
+     },
+     {
+      "tax_amount": 4.2,
+      "tax_category": "S",
+      "tax_percent": 14.0,
+      "taxable_amount": 30.0
+     },
+     {
+      "tax_amount": 25.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 100.0
+     },
+     {
+      "tax_amount": 0.0,
+      "tax_category": "E",
+      "tax_percent": 0.0,
+      "taxable_amount": 15.0
+     },
+     {
+      "tax_amount": 0.0,
+      "tax_category": "Z",
+      "tax_percent": 0.0,
+      "taxable_amount": 5.0
+     }
+    ],
+    "totals": {
+     "line_extension": 190.0,
+     "payable": 223.7,
+     "tax_exclusive": 190.0,
+     "tax_inclusive": 223.7
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_no_vat.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-03",
+    "invoice_number": "5531",
+    "issue_date": "2026-10-20",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 50.0,
+      "name": "Siivous lokakuu",
+      "price_unit": 50.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 12.75,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": null,
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "30007895",
+    "seller": {
+     "bic": null,
+     "business_id": "0000007-8",
+     "city": "Turku",
+     "country_code": "FI",
+     "email": null,
+     "iban": "FI0512345600000006",
+     "name": "Example Services Oy",
+     "phone": null,
+     "postal_code": "20100",
+     "street": "Palvelukuja 3",
+     "vat": "FI00000078",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": "30007895",
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 12.75,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 50.0
+     }
+    ],
+    "totals": {
+     "line_extension": 50.0,
+     "payable": 62.75,
+     "tax_exclusive": 50.0,
+     "tax_inclusive": 62.75
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_non_eur.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "USD",
+    "due_date": "2026-12-12",
+    "invoice_number": "EX-2026-77",
+    "issue_date": "2026-11-12",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 200.0,
+      "name": "Lisenssi",
+      "price_unit": 50.0,
+      "product_code": "ART-501",
+      "quantity": 4.0,
+      "tax_amount": 51.0,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": null,
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": [
+      "VAT breakdown also stated in EUR; only the USD one is used.",
+      "EpiInstructedAmount is in EUR, the invoice in USD; the amount to pay is taken from the invoice total."
+     ]
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 51.0,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 200.0
+     }
+    ],
+    "totals": {
+     "line_extension": 200.0,
+     "payable": 251.0,
+     "tax_exclusive": 200.0,
+     "tax_inclusive": 251.0
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_rounding.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-12-01",
+    "invoice_number": "10047",
+    "issue_date": "2026-11-17",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 79.99,
+      "name": "Työkalusarja",
+      "price_unit": 79.99,
+      "product_code": "ART-090",
+      "quantity": 1.0,
+      "tax_amount": 20.4,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 0.01,
+      "name": "Rounding",
+      "price_unit": 0.01,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 0.0,
+      "tax_category": "Z",
+      "tax_percent": 0.0,
+      "unit_code": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "10001235",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": 0.01,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 20.4,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 79.99
+     }
+    ],
+    "totals": {
+     "line_extension": 80.0,
+     "payable": 100.4,
+     "tax_exclusive": 80.0,
+     "tax_inclusive": 100.4
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_simple_invoice.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": "0000005-1",
+     "city": "Espoo",
+     "country_code": "FI",
+     "name": "Example Buyer Oy",
+     "postal_code": "02100",
+     "street": "Ostajantie 2",
+     "vat": "FI00000051"
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-29",
+    "invoice_number": "10045",
+    "issue_date": "2026-11-15",
+    "lines": [
+     {
+      "description": "Väri musta",
+      "expense_category": null,
+      "line_total": 240.0,
+      "name": "Toimistotuoli",
+      "price_unit": 120.0,
+      "product_code": "ART-001",
+      "quantity": 2.0,
+      "tax_amount": 61.2,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 120.0,
+      "name": "Asennustyö",
+      "price_unit": 80.0,
+      "product_code": "ART-002",
+      "quantity": 1.5,
+      "tax_amount": 30.6,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "HUR",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": "Kiitos tilauksesta.",
+    "payment_reference": "10001235",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": "Helsinki",
+     "country_code": "FI",
+     "email": "laskutus@example.test",
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": "+358 40 0000001",
+     "postal_code": "00100",
+     "street": "Esimerkkikatu 1",
+     "vat": "FI00000035",
+     "website": "www.example.test"
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": "SO-7781",
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 91.8,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 360.0
+     }
+    ],
+    "totals": {
+     "line_extension": 360.0,
+     "payable": 451.8,
+     "tax_exclusive": 360.0,
+     "tax_inclusive": 451.8
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_subrow_adjustment.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-30",
+    "invoice_number": "10046",
+    "issue_date": "2026-11-16",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 240.0,
+      "name": "Toimistotuoli",
+      "price_unit": 120.0,
+      "product_code": "ART-001",
+      "quantity": 2.0,
+      "tax_amount": 61.2,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 120.0,
+      "name": "Asennustyö",
+      "price_unit": 80.0,
+      "product_code": "ART-002",
+      "quantity": 1.5,
+      "tax_amount": 30.6,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "HUR",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": "Hyvitys maksetusta ennakosta",
+      "expense_category": null,
+      "line_total": -60.0,
+      "name": "Ennakkomaksu",
+      "price_unit": -60.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": -15.3,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": null,
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "10001248",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": [
+      "1 subline(s) (SubInvoiceRow) booked as lines: the rows alone make 360.00, the stated total 300.00 includes the sublines."
+     ]
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 76.5,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 300.0
+     }
+    ],
+    "totals": {
+     "line_extension": 300.0,
+     "payable": 376.5,
+     "tax_exclusive": 300.0,
+     "tax_inclusive": 376.5
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_subrows_freetext.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-11-24",
+    "invoice_number": "H-778",
+    "issue_date": "2026-11-10",
+    "lines": [
+     {
+      "description": "Sinkitty, M6",
+      "expense_category": null,
+      "line_total": 10.0,
+      "name": "Ruuvi",
+      "price_unit": 0.1,
+      "product_code": "RU-M6",
+      "quantity": 100.0,
+      "tax_amount": 2.55,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 5.0,
+      "name": "Mutteri",
+      "price_unit": 0.05,
+      "product_code": "MU-M6",
+      "quantity": 100.0,
+      "tax_amount": 1.28,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     },
+     {
+      "description": "Toimitus viikolla 48",
+      "expense_category": null,
+      "line_total": 10.0,
+      "name": "Rahti",
+      "price_unit": 10.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 2.55,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": "Tilauksenne 4500012345",
+    "payment_reference": "40001111",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000002-7",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI7512345600000007",
+     "name": "Example Hardware Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000027",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": [
+      "1 subline(s) (SubInvoiceRow) were not booked as lines; guideline §11: they summarise the rows above them."
+     ]
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 6.38,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 25.0
+     }
+    ],
+    "totals": {
+     "line_extension": 25.0,
+     "payable": 31.38,
+     "tax_exclusive": 25.0,
+     "tax_inclusive": 31.38
+    },
+    "type": "Invoice"
+   }
+  }
+ ],
+ "fi30_two_messages.xml": [
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-12-04",
+    "invoice_number": "B-1",
+    "issue_date": "2026-11-20",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 10.0,
+      "name": "Tuote A",
+      "price_unit": 10.0,
+      "product_code": null,
+      "quantity": 1.0,
+      "tax_amount": 2.55,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "10001235",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 2.55,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 10.0
+     }
+    ],
+    "totals": {
+     "line_extension": 10.0,
+     "payable": 12.55,
+     "tax_exclusive": 10.0,
+     "tax_inclusive": 12.55
+    },
+    "type": "Invoice"
+   }
+  },
+  {
+   "data": {
+    "buyer": {
+     "business_id": null,
+     "city": null,
+     "country_code": null,
+     "name": "Example Buyer Oy",
+     "postal_code": null,
+     "street": null,
+     "vat": null
+    },
+    "currency": "EUR",
+    "due_date": "2026-12-04",
+    "invoice_number": "B-2",
+    "issue_date": "2026-11-20",
+    "lines": [
+     {
+      "description": null,
+      "expense_category": null,
+      "line_total": 20.0,
+      "name": "Tuote B",
+      "price_unit": 10.0,
+      "product_code": null,
+      "quantity": 2.0,
+      "tax_amount": 5.1,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "unit_code": "C62",
+      "unit_code_unmapped": null
+     }
+    ],
+    "note": null,
+    "payment_reference": "20004565",
+    "seller": {
+     "bic": "EXMPFIHH",
+     "business_id": "0000003-5",
+     "city": null,
+     "country_code": null,
+     "email": null,
+     "iban": "FI1612345600000002",
+     "name": "Example Supplier Oy",
+     "phone": null,
+     "postal_code": null,
+     "street": null,
+     "vat": "FI00000035",
+     "website": null
+    },
+    "source_meta": {
+     "amounts_stated": true,
+     "format": "finvoice",
+     "invoice_type_code": "INV01",
+     "original_invoice_number": null,
+     "paid_amount": null,
+     "rounding": null,
+     "seller_reference": null,
+     "sign_normalised": false,
+     "version": "3.0",
+     "warnings": []
+    },
+    "tax_subtotals": [
+     {
+      "tax_amount": 5.1,
+      "tax_category": "S",
+      "tax_percent": 25.5,
+      "taxable_amount": 20.0
+     }
+    ],
+    "totals": {
+     "line_extension": 20.0,
+     "payable": 25.1,
+     "tax_exclusive": 20.0,
+     "tax_inclusive": 25.1
+    },
+    "type": "Invoice"
+   }
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!-- finvoice content T07: the buyer reference under the customer and the
+         delivery address, on invoices and bills, editable in draft only. -->
+    <record id="view_move_form_einvoice_buyer_reference" model="ir.ui.view">
+        <field name="name">account.move.form.einvoice.buyer.reference</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@id='header_left_group']/field[@name='partner_shipping_id']" position="after">
+                <field name="einvoice_buyer_reference"
+                       invisible="move_type not in ('out_invoice', 'out_refund', 'in_invoice', 'in_refund')"
+                       readonly="state != 'draft'"
+                       placeholder="e.g. orderer's name or cost centre"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

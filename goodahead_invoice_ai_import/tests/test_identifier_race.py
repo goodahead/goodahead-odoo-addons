@@ -1,11 +1,21 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
 """Two imports for the same vendor storing the same identifier at once.
 
-When two import jobs both insert the same `(partner_id, kind, value)` row, the
-loser must skip it instead of breaking the post-processing savepoint. A real
-two-transaction race cannot run inside a `TransactionCase`, so these tests
-reproduce what the loser sees: a row that exists but its `search` did not return.
+🔴 THE CASE: a batch of bills from one vendor
+arrived together, two import jobs ran one second apart, both found the vendor's
+phone missing and both inserted it. The second hit the
+`(partner_id, kind, value)` unique constraint inside the import's
+post-processing savepoint, so EVERYTHING post-processing had done to its bill —
+expense accounts, the payee-side bank check, the printed totals behind the
+mismatch banner, the chatter note — was rolled back and the import was marked
+failed although its bill existed.
+
+A real two-transaction race cannot run inside a `TransactionCase`, so these
+tests reproduce what the loser sees: a row that already exists in the table but
+that its `search` did not return (on a running server, because the other job
+had not committed when the snapshot was taken).
 """
 
 from unittest.mock import patch
@@ -48,7 +58,7 @@ class TestIdentifierRace(TransactionCase):
         return patch.object(model_cls, "search", search)
 
     def test_new_rows_are_all_created_in_one_go(self):
-        pairs = [("phone", "2125550142"), ("domain", "race-vendor.example")]
+        pairs = [("phone", "2125550135"), ("domain", "race-vendor.example")]
         created = self.Identifier._add_pairs({self.vendor.id: pairs}, "test")
         self.assertEqual(
             {(kind, value) for _pid, kind, value in created}, set(pairs)
@@ -61,7 +71,7 @@ class TestIdentifierRace(TransactionCase):
             {
                 "partner_id": self.vendor.id,
                 "kind": "phone",
-                "value": "2125550142",
+                "value": "2125550135",
                 "source": "the other import",
             }
         )
@@ -69,7 +79,7 @@ class TestIdentifierRace(TransactionCase):
             created = self.Identifier._add_pairs(
                 {
                     self.vendor.id: [
-                        ("phone", "2125550142"),
+                        ("phone", "2125550135"),
                         ("domain", "race-vendor.example"),
                     ]
                 },
@@ -83,7 +93,7 @@ class TestIdentifierRace(TransactionCase):
         # ...both rows exist exactly once, and the competitor's is untouched.
         self.assertEqual(
             self._rows(),
-            {("phone", "2125550142"), ("domain", "race-vendor.example")},
+            {("phone", "2125550135"), ("domain", "race-vendor.example")},
         )
         phone = self.Identifier.search(
             [("partner_id", "=", self.vendor.id), ("kind", "=", "phone")]
@@ -91,14 +101,15 @@ class TestIdentifierRace(TransactionCase):
         self.assertEqual(phone.source, "the other import")
 
     def test_the_transaction_stays_usable_after_the_conflict(self):
-        """The caller's own savepoint must stay usable after the conflict."""
+        """The point of the fix: the caller's own savepoint must not be broken,
+        or everything else post-processing did would still be rolled back."""
         self.Identifier.create(
-            {"partner_id": self.vendor.id, "kind": "phone", "value": "2125550142"}
+            {"partner_id": self.vendor.id, "kind": "phone", "value": "2125550135"}
         )
         with self.env.cr.savepoint():
             with self._blind_search():
                 self.Identifier._add_pairs(
-                    {self.vendor.id: [("phone", "2125550142")]}, "loser"
+                    {self.vendor.id: [("phone", "2125550135")]}, "loser"
                 )
             # Work the caller does after learning identifiers still lands.
             self.vendor.comment = "post-processing continued"
@@ -107,10 +118,10 @@ class TestIdentifierRace(TransactionCase):
 
     def test_every_row_taken_returns_nothing_learned(self):
         self.Identifier.create(
-            {"partner_id": self.vendor.id, "kind": "phone", "value": "2125550142"}
+            {"partner_id": self.vendor.id, "kind": "phone", "value": "2125550135"}
         )
         with self._blind_search():
             created = self.Identifier._add_pairs(
-                {self.vendor.id: [("phone", "2125550142")]}, "loser"
+                {self.vendor.id: [("phone", "2125550135")]}, "loser"
             )
         self.assertEqual(created, [])

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-08: readiness of a customer for its own channel in the current
+         company — "Ready to receive e-invoices", or what is missing and where
+         it is fixed. Stored data only, no APIX call. -->
+    <record id="res_partner_view_form_send_apix" model="ir.ui.view">
+        <field name="name">res.partner.form.send.apix</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <div class="alert alert-info mb-0" role="alert"
+                     groups="account.group_account_invoice"
+                     invisible="customer_rank == 0 or send_readiness_level not in ('ready', 'warning', 'off')">
+                    <field name="send_readiness_html" readonly="1" nolabel="1"/>
+                </div>
+                <div class="alert alert-warning mb-0" role="alert"
+                     groups="account.group_account_invoice"
+                     invisible="customer_rank == 0 or send_readiness_level != 'not_ready'">
+                    <field name="send_readiness_html" readonly="1" nolabel="1"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- finvoice content T10: the standing buyer reference new invoices start
+         with, next to the e-invoice address. -->
+    <record id="res_partner_view_form_standing_buyer_reference" model="ir.ui.view">
+        <field name="name">res.partner.form.standing.buyer.reference</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='sales_purchases']//field[@name='user_id']" position="after">
+                <field name="einvoice_standing_buyer_reference"
+                       groups="account.group_account_invoice"
+                       placeholder="e.g. orderer's name or cost centre"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- The fix-it wizard for this contact, next to its e-invoice address and
+         operator (Sales & Purchase tab): billing users who may change the
+         contact; saves the pair to this contact only. -->
+    <record id="res_partner_view_form_einvoice_lookup" model="ir.ui.view">
+        <field name="name">res.partner.form.einvoice.lookup</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="l10n_fi_edicode.res_partner_form_view"/>
+        <field name="arch" type="xml">
+            <field name="einvoice_operator_id" position="after">
+                <field name="einvoice_lookup_allowed" invisible="1"/>
+                <div colspan="2" class="o_row" groups="account.group_account_invoice"
+                     invisible="not einvoice_lookup_allowed">
+                    <button name="action_apix_open_einvoice_lookup" type="object"
+                            string="Look up e-invoice address" icon="fa-search"
+                            class="btn-link ps-0" invisible="not einvoice_lookup_allowed"/>
+                </div>
+            </field>
+        </field>
+    </record>
+
+</odoo>

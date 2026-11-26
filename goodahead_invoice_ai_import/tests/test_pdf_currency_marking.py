@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from odoo.tests import BaseCase, TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib import pdf_currency
+from odoo.addons.goodahead_invoice_import.lib import pdf_currency
 from odoo.addons.goodahead_invoice_ai_import.lib.claude_client import (
     CURRENCY_INFERRED_KEY,
     CURRENCY_MARKING_KEY,
@@ -25,7 +25,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.claude_client import (
     currency_marking_verdict,
     nothing_was_printed,
 )
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -46,7 +46,7 @@ _ROUTING_LINE = "*ZZX  RZONE01/05/26       ILS 40318"
 # such bills print their text layer. Every amount is bare; the only ISO-like
 # token is `ILS` in a routing field (see
 # `test_the_naive_rule_would_have_broken_the_fix`). The figures add up:
-# 3,748.50 less 88% discount, plus fuel surcharge and fees, is 600.07.
+# 2,825.20 less 88% discount, plus fuel surcharge and fees, is 428.48.
 _FREIGHT_CHARGE_BLOCK = [
     "ORIGINAL INVOICE",
     "PAGE 1  OF  2",
@@ -56,23 +56,23 @@ _FREIGHT_CHARGE_BLOCK = [
     "Bill of Lading Number ZZ00000-00001",
     "Terms PREPAID",
     "Origin / Destination NWK / TMP",
-    "Total Amount Due 600.07",
+    "Total Amount Due 428.48",
     "Payment Due Date 03/05/2026",
     "PIECES PALLETS HM DESCRIPTION WT(LBS) NMFC CLASS RATE TOTAL CHARGES",
-    "4 REFRIGERATOR / FREEZER 180 360 1874.25 3,748.50",
+    "4 REFRIGERATOR / FREEZER 180 360 1412.60 2,825.20",
     "CARRIER REST API",
     "APPOINTMENT DELIVERY **",
     _ROUTING_LINE,
     "UPDATE PER INSPECTION",
     "0000088 CUBIC FEET",
-    "012775 FUEL SURCHG LTL SHPT 28.40% 127.75",
-    "880  LESS DISCOUNT .880 3,298.68-",
+    "006696 FUEL SURCHG LTL SHPT 19.75% 66.96",
+    "880  LESS DISCOUNT .880 2,486.18-",
     "0700 NOTIFY CHARGE 7.00",
     "0001550 WEIGHT VALIDATION FEE 15.50",
     "Rate Tariff: ZZ-000000-100-000",
     "PLEASE PAY THIS AMOUNT",
-    "600.07",
-    "555000000101 000000060007 02032026 1",
+    "428.48",
+    "555000000101 000000042848 02032026 1",
 ]
 
 # One money-bearing excerpt per invented sample document, with the expected
@@ -338,7 +338,7 @@ class TestWhatCountsAsACurrencyMarking(BaseCase):
 
     def test_a_code_against_an_amount_is_a_marking(self):
         for text in (
-            "Total USD 600.07",
+            "Total USD 428.48",
             "Total 1,234.56 CAD",
             "Summe EUR 1.234,56",
             "Yhteensä 1 234,56 EUR",
@@ -604,7 +604,7 @@ class TestTheTextLayerVerdict(BaseCase):
     def test_a_marked_page_is_seen_as_marked(self):
         """Control: a page that prints `$` is reported as printed."""
         verdict = pdf_currency.scan_pdf_for_currency(
-            _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+            _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         )
         self.assertEqual(verdict["verdict"], pdf_currency.PRINTED)
         self.assertEqual(verdict["markings"], ["$"])
@@ -912,7 +912,7 @@ class TestWhichSourceDecides(BaseCase):
     def test_the_text_layer_beats_the_model_saying_null(self):
         """A printed `¥` the model did not report: the text layer decides, so the
         gate stays closed."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["TOTAL ¥ 3,748.50"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["TOTAL ¥ 2,825.20"])
         data = self._verdict(pdf, {CURRENCY_SYMBOL_KEY: None})
         self.assertFalse(nothing_was_printed(data))
         self.assertFalse(data[CURRENCY_MARKING_KEY]["agree"])
@@ -963,7 +963,7 @@ class TestWhichSourceDecides(BaseCase):
     def test_a_disagreement_is_logged(self):
         """A disagreement between the model and the text layer is a warning."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.lib.claude_client",
+            "odoo.addons.goodahead_invoice_import.lib.invoice_data",
             level="WARNING",
         ) as captured:
             self._verdict(_freight_pdf(), {CURRENCY_SYMBOL_KEY: "USD"})
@@ -1004,14 +1004,14 @@ class TestTheFreightBillImports(BaseCase):
 
     def test_a_marked_page_still_blocks_the_fallback(self):
         """Control: on a page that prints `$`, nothing is marked as inferred."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         data = _model_inferred_extraction(**{CURRENCY_SYMBOL_KEY: None})
         result = self._extract(data, pdf)
         self.assertNotIn(CURRENCY_INFERRED_KEY, result["data"])
 
     def test_a_printed_symbol_the_model_missed_fails_the_import(self):
         """A printed `¥` the model missed, with no currency resolved, fails."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["TOTAL ¥ 3,748.50"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["TOTAL ¥ 2,825.20"])
         data = _model_inferred_extraction(
             currency=None, **{CURRENCY_SYMBOL_KEY: None}
         )
@@ -1063,7 +1063,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-freight.pdf",
                 "company_id": self.company.id,
@@ -1097,7 +1097,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-freight.pdf",
                 "company_id": self.company.id,
@@ -1107,7 +1107,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
             }
         )
         rec.action_reimport_from_json()
-        self.assertEqual(rec.state, "done", rec.error_message or "")
+        self.assertEqual(rec.state, "imported", rec.error_message or "")
         self.assertTrue(rec.move_id, "the re-import produced no bill")
         return rec, json.loads(rec.extraction_data)
 
@@ -1154,7 +1154,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
 
     def test_an_ordinary_marked_bill_posts_no_such_note(self):
         """Control: a bill whose page prints `$` gets no such note."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         extracted = self._usd_extraction(pdf)
         rec, result = self._run(extracted)
         self.assertTrue(result.startswith("OK"), result)
@@ -1208,7 +1208,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
 
     def test_the_add_direction_can_still_decline(self):
         """Control: over a page that prints `$`, re-import adds no marker."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         extracted = self._old_usd_extraction()
         rec, stored = self._reimport(extracted, pdf_bytes=pdf)
         self.assertEqual(
@@ -1222,7 +1222,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
     def test_an_old_record_is_re_decided_from_its_own_pdf(self):
         """An old record whose page prints `$` is re-decided from its PDF: the
         marker drops and no note is posted."""
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         extracted = self._pre_verdict_extraction()
         self.assertNotIn(
             CURRENCY_MARKING_KEY, extracted, "precondition: no stored verdict"
@@ -1272,7 +1272,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
             pdf_currency.UNKNOWN,
             "precondition: the unreadable attachment stored an UNKNOWN",
         )
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         _rec2, after_the_fix = self._reimport(after_the_bad_one, pdf_bytes=pdf)
         self.assertEqual(
             after_the_fix[CURRENCY_MARKING_KEY]["text_layer"],
@@ -1290,7 +1290,7 @@ class TestTheNoteIsPostedOnTheBill(_NoClaudeMixin, TransactionCase):
             text_layer=pdf_currency.PRINTED,
             markings=["€"],
         )
-        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $600.07"])
+        pdf = _pdf_of(_FREIGHT_CHARGE_BLOCK + ["Total Amount Due $428.48"])
         _rec, stored = self._reimport(extracted, pdf_bytes=pdf)
         self.assertEqual(
             stored[CURRENCY_MARKING_KEY]["markings"],

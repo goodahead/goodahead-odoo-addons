@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-04: the "Send again anyway" tick box of the already-sent alert
+        ; the APIX alerts themselves come from `_get_alerts`. -->
+    <record id="account_move_send_wizard_form_send_apix" model="ir.ui.view">
+        <field name="name">account.move.send.wizard.form.send.apix</field>
+        <field name="model">account.move.send.wizard</field>
+        <field name="inherit_id" ref="account.account_move_send_wizard_form"/>
+        <field name="arch" type="xml">
+            <!-- a person pressed Send: the only way the dialog sends through APIX
+                ; code calling the action has no such context -->
+            <xpath expr="//footer/button[@name='action_send_and_print'][1]" position="attributes">
+                <attribute name="context">{'goodahead_person_send': True}</attribute>
+            </xpath>
+            <xpath expr="//footer/button[@name='action_send_and_print'][2]" position="attributes">
+                <attribute name="context">{'goodahead_person_send': True}</attribute>
+            </xpath>
+            <xpath expr="//div[@id='alerts']" position="after">
+                <div class="d-flex align-items-center gap-2 mb-2" invisible="not apix_resend_needed">
+                    <field name="apix_resend_confirmed" nolabel="1"/>
+                    <label for="apix_resend_confirmed"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

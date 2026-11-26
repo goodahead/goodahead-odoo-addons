@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_goodahead_apix_connection_invoice,goodahead.apix.connection billing,model_goodahead_apix_connection,account.group_account_invoice,1,0,0,0
+access_goodahead_apix_connection_manager,goodahead.apix.connection manager,model_goodahead_apix_connection,account.group_account_manager,1,1,1,1
+access_goodahead_apix_fetch_credentials_manager,goodahead.apix.fetch.credentials manager,model_goodahead_apix_fetch_credentials,account.group_account_manager,1,1,1,1

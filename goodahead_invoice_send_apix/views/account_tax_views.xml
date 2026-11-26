@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-01: the shown VAT category and its origin on the tax list. -->
+    <record id="view_tax_tree_einvoice_vat" model="ir.ui.view">
+        <field name="name">account.tax.list.einvoice.vat</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account.view_tax_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='invoice_label']" position="after">
+                <field name="einvoice_vat_category" string="VAT category (e-invoice)"
+                       optional="show"/>
+                <field name="einvoice_vat_category_origin" string="Set / default"
+                       widget="badge" optional="show"
+                       decoration-success="einvoice_vat_category_origin == 'set'"
+                       decoration-muted="einvoice_vat_category_origin == 'default'"
+                       decoration-warning="einvoice_vat_category_origin == 'unclassified'"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- SCR-01: "Unclassified 0 % sales taxes" (spec §7 KPI). -->
+    <record id="view_account_tax_search_einvoice_vat" model="ir.ui.view">
+        <field name="name">account.tax.search.einvoice.vat</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account.view_account_tax_search"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='purchase']" position="after">
+                <filter string="Unclassified 0 % sales taxes" name="einvoice_unclassified"
+                        domain="[('type_tax_use', '=', 'sale'), ('amount_type', '=', 'percent'), ('amount', '=', 0), ('einvoice_vat_category', '=', 'unclassified')]"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- SCR-02: next to the ERP's "Tax Category Code": the category a send
+         uses with its origin, the VAT reason (placeholder = the default
+         wording) and the unclassified banner. Read only for Accountants by
+         the ERP's tax rights. -->
+    <record id="view_tax_form_einvoice_vat" model="ir.ui.view">
+        <field name="name">account.tax.form.einvoice.vat</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account_edi_ubl_cii_tax_extension.view_account_invoice_form_inherit"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <div class="alert alert-warning mb-0" role="alert"
+                     invisible="type_tax_use != 'sale' or einvoice_vat_category_origin != 'unclassified'">
+                    This 0 % tax has no VAT category. E-invoices send it without one and
+                    readiness warns. Set the category.
+                </div>
+            </xpath>
+            <!-- 18.0's tax extension makes the code required for AE, E, G, O
+                 and K; as on 19.0 it is optional: a send uses the category's
+                 standard code when none is set (finvoice content ADR-0002). -->
+            <xpath expr="//field[@name='ubl_cii_tax_exemption_reason_code']" position="attributes">
+                <attribute name="required">False</attribute>
+            </xpath>
+            <xpath expr="//field[@name='ubl_cii_tax_exemption_reason_code']" position="after">
+                <label for="einvoice_vat_category" string="VAT category (e-invoice)"/>
+                <div class="o_row">
+                    <field name="einvoice_vat_category" readonly="1" nolabel="1"/>
+                    <field name="einvoice_vat_category_origin" widget="badge" nolabel="1"
+                           decoration-success="einvoice_vat_category_origin == 'set'"
+                           decoration-muted="einvoice_vat_category_origin == 'default'"
+                           decoration-warning="einvoice_vat_category_origin == 'unclassified'"/>
+                </div>
+                <field name="einvoice_vat_reason_default" invisible="1"/>
+                <field name="einvoice_vat_reason" string="VAT reason (e-invoice)"
+                       invisible="einvoice_vat_category in ('S', 'unclassified')"
+                       options="{'placeholder_field': 'einvoice_vat_reason_default'}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

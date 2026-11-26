@@ -19,7 +19,7 @@ from lxml import etree
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.models.partner_identifier import (
+from odoo.addons.goodahead_invoice_import.models.partner_identifier import (
     PUBLIC_EMAIL_DOMAINS_PARAM,
     _NEVER_IDENTIFYING_DOMAINS,
     _PUBLIC_EMAIL_DOMAINS,
@@ -126,7 +126,7 @@ class TestPublicEmailDomains(TransactionCase):
     def test_removing_a_shipped_domain_is_logged_as_a_warning(self):
         """A removal from the shipped list is always logged as a warning."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.partner_identifier",
+            "odoo.addons.goodahead_invoice_import.models.partner_identifier",
             level=logging.WARNING,
         ) as captured:
             self._set("-yahoo.com")
@@ -150,7 +150,7 @@ class TestPublicEmailDomains(TransactionCase):
     def test_junk_is_logged_and_dropped_and_never_empties_the_list(self):
         """Unreadable entries are logged and dropped; the rest of the list survives."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.partner_identifier",
+            "odoo.addons.goodahead_invoice_import.models.partner_identifier",
             level=logging.WARNING,
         ) as captured:
             self._set("not_a_domain!, zz-nordic.example, @@@")
@@ -342,13 +342,13 @@ class TestDomainsThatIdentifyNobody(TransactionCase):
             "emaildomain.com",
         )
         self.assertEqual(
-            self.Identifier._normalise_domain("owner@nc.rr.com"), "nc.rr.com"
+            self.Identifier._normalise_domain("zz-owner@nc.rr.com"), "nc.rr.com"
         )
 
     def test_subtracting_a_shipped_rule_is_logged_by_name(self):
         """Removing a second-floor entry is logged as a removal, not as a no-op."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.partner_identifier",
+            "odoo.addons.goodahead_invoice_import.models.partner_identifier",
             level=logging.WARNING,
         ) as captured:
             self.env["ir.config_parameter"].sudo().set_param(
@@ -402,13 +402,13 @@ class TestRowsSeededUnderTheOldList(TransactionCase):
 
     def test_a_stale_row_for_a_newly_excluded_domain_can_no_longer_decide(self):
         self.assertFalse(
-            self.env["res.partner"]._ai_vendor_by_domains(["laskutus@suomi24.fi"])
+            self.env["res.partner"]._ai_vendor_by_domains(["zz-laskutus@suomi24.fi"])
         )
 
     def test_and_it_can_no_longer_be_offered_as_a_candidate_either(self):
         """The candidate path, which reads the stored table directly, skips it too."""
         candidates = self.env["account.move"]._ai_vendor_candidates(
-            {"name": "ZZ Nothing Like It", "email": "laskutus@suomi24.fi"}
+            {"name": "ZZ Nothing Like It", "email": "zz-laskutus@suomi24.fi"}
         )
         self.assertNotIn(self.partner, [c["partner"] for c in candidates])
 
@@ -472,7 +472,7 @@ class TestTheSettingIsReachableFromTheUI(TransactionCase):
         `fields.Char(help=…)` is only a tooltip; the setting's help is shown at all times.
         """
         view = self.env.ref(
-            "goodahead_invoice_ai_import.res_config_settings_view_form"
+            "goodahead_invoice_import.res_config_settings_view_form"
         )
         arch = etree.fromstring(view.arch_db)
         settings = arch.xpath(

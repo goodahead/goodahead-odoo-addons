@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.models.account_move import (
+from odoo.addons.goodahead_invoice_import.models.account_move import (
     iban_checksum_fails,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
@@ -23,9 +23,9 @@ from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
 
 from .profiles import skip_method_unless_profile
 
-VENDOR_IBAN = "FI1640001000000017"
+VENDOR_IBAN = "FI2912345600004521"
 # A misread with one digit too many, failing the IBAN checksum.
-MISREAD_IBAN = "FI16400010000000017"
+MISREAD_IBAN = "FI29123456000004521"
 # Any valid Finnish IBAN that is not the vendor's.
 COMPANY_IBAN = "FI2112345600000785"
 
@@ -59,8 +59,8 @@ class TestCreditMemoBank(TransactionCase):
         return {
             "type": doc_type,
             "invoice_number": "ZZ-CN-1",
-            "issue_date": "2026-09-09",
-            "due_date": "2026-09-09",
+            "issue_date": "2026-03-02",
+            "due_date": "2026-03-02",
             "currency": "EUR",
             "seller": {
                 "name": "ZZ Bank Vendor Oy",
@@ -78,30 +78,30 @@ class TestCreditMemoBank(TransactionCase):
             "payment_reference": "12345672",
             "lines": [
                 {
-                    "product_code": "1000002",
-                    "name": "PISTORASIA",
+                    "product_code": "7700123",
+                    "name": "ZZ WALL SOCKET",
                     "quantity": sign * 4.0,
                     "unit_code": "C62",
-                    "price_unit": 18.61,
-                    "line_total": sign * 70.72,
+                    "price_unit": 22.5,
+                    "line_total": sign * 81.0,
                     "tax_percent": 25.5,
-                    "tax_amount": sign * 18.03,
+                    "tax_amount": sign * 20.66,
                     "tax_category": "S",
                 }
             ],
             "tax_subtotals": [
                 {
                     "tax_percent": 25.5,
-                    "taxable_amount": sign * 70.72,
-                    "tax_amount": sign * 18.03,
+                    "taxable_amount": sign * 81.0,
+                    "tax_amount": sign * 20.66,
                     "tax_category": "S",
                 }
             ],
             "totals": {
-                "line_extension": sign * 70.72,
-                "tax_exclusive": sign * 70.72,
-                "tax_inclusive": sign * 88.75,
-                "payable": sign * 88.75,
+                "line_extension": sign * 81.0,
+                "tax_exclusive": sign * 81.0,
+                "tax_inclusive": sign * 101.66,
+                "payable": sign * 101.66,
             },
         }
 
@@ -113,7 +113,7 @@ class TestCreditMemoBank(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "credit-memo.pdf",
                 "company_id": self.company.id,
@@ -489,10 +489,10 @@ class TestCreditMemoBank(TransactionCase):
 
     def test_iban_checksum(self):
         self.assertFalse(iban_checksum_fails(VENDOR_IBAN))
-        self.assertFalse(iban_checksum_fails("FI16 4000 1000 0000 17"))
+        self.assertFalse(iban_checksum_fails("FI29 1234 5600 0045 21"))
         self.assertTrue(iban_checksum_fails(MISREAD_IBAN))
         # Odd spacing of the correct number is still valid.
-        self.assertFalse(iban_checksum_fails("FI16400010000000 17"))
+        self.assertFalse(iban_checksum_fails("FI29123456000045 21"))
         # Not shaped like an IBAN: a domestic number is not ours to judge.
         self.assertFalse(iban_checksum_fails("987654320"))
         self.assertFalse(iban_checksum_fails(None))

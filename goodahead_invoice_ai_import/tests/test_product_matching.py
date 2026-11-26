@@ -28,7 +28,7 @@ from odoo.addons.account_edi_ubl_cii.models.account_edi_common import (
 from odoo.addons.account_edi_ubl_cii.models.account_edi_ubl import (
     AccountEdiUBL as CoreAccountEdiUBL,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
 )

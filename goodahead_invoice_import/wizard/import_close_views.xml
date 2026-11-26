@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!-- SCR-08: close an unsettled import without a bill; the reason is required. -->
+    <record id="view_invoice_import_close_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.close.form</field>
+        <field name="model">goodahead.invoice.import.close</field>
+        <field name="arch" type="xml">
+            <form string="Close without bill">
+                <field name="import_ids" invisible="1"/>
+                <field name="is_apix" invisible="1"/>
+                <p class="text-muted">
+                    No vendor bill will be created. The import keeps its files
+                    and data and can be reopened.
+                </p>
+                <p class="text-muted" invisible="not is_apix">
+                    APIX will be told it was received.
+                </p>
+                <group>
+                    <field name="reason" required="1"
+                           placeholder="e.g. duplicate of a bill entered by hand, test message"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Close without bill" class="btn-primary"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

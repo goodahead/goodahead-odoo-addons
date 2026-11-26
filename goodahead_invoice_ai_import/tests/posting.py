@@ -3,9 +3,18 @@
 
 """Post a bill in a test the way the real flow does: approved first, where approval exists.
 
-`goodahead_bill_approval`, when installed, refuses `_post` on a vendor bill that has not
-been through both approval steps, so the approvals are granted here as a precondition.
-This module must not depend on the approval module, so the fields are checked, not assumed.
+🔴 An approval add-on that hooks into posting, where one is installed, may refuse `_post`
+on a vendor bill that has not been through both approval steps, with no `env.su` bypass
+on purpose. The tests that post here are about something else — the bill COUNT, the
+candidate cards — so the approvals are a precondition, not the thing under test. They are
+granted with a superuser write of the four approval fields. Without this, the posting
+tests error on every database with such an add-on installed.
+
+⚠️ This module must not depend on the approval module
+(`test_bill_approval_hook.test_the_import_module_does_not_depend_on_the_approval_module`),
+so the fields are checked, not assumed. Without it this is a plain `action_post()`.
+
+Not named `test_*.py`, so the loader never collects it as a test file.
 """
 
 from odoo import fields

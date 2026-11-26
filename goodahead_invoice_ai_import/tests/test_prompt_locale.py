@@ -727,7 +727,7 @@ class TestTheFallbackCurrencyIsAnArgument(BaseCase):
     def _code(self, **kwargs):
         from lxml import etree
 
-        from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+        from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
             generate_peppol_invoice_xml,
         )
 
@@ -760,7 +760,7 @@ class TestTheFallbackCurrencyIsAnArgument(BaseCase):
     def test_no_fallback_leaves_the_last_resort_literal(self):
         """The control. `generate_peppol_invoice_xml(data)` with one argument
         is what every lib-only caller passes, and it must keep working."""
-        from odoo.addons.goodahead_invoice_ai_import.lib import ubl_generator
+        from odoo.addons.goodahead_invoice_import.adapters import ubl_generator
 
         self.assertEqual(self._code(), ubl_generator.DEFAULT_CURRENCY)
         self.assertEqual(self._code(default_currency=None),
@@ -817,7 +817,7 @@ class TestDefaultCurrencyComesFromTheCompany(TransactionCase):
         """
         from lxml import etree
 
-        from odoo.addons.goodahead_invoice_ai_import.lib import ubl_generator
+        from odoo.addons.goodahead_invoice_import.adapters import ubl_generator
 
         company = self.env.company
         with patch.object(ubl_generator, "DEFAULT_CURRENCY", "ZZZ"):

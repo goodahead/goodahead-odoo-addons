@@ -1,0 +1,147 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": "FI00000019",
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "EUR",
+    "original_number": null,
+    "payment_reference": "10001235",
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 1045.0,
+      "tax": 266.48,
+      "total": 1311.48,
+      "rounding": 0.0,
+      "rows": 1045.0
+    },
+    "type_code_un": "380"
+  },
+  "lines": [
+    {
+      "code": "ZZ-A",
+      "name": "Discounted goods",
+      "description": null,
+      "quantity": 10,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 100.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 850.0,
+      "tax": 216.75,
+      "total": 1066.75,
+      "discount": {
+        "percent": 15.0,
+        "amount": 150.0
+      }
+    },
+    {
+      "code": "ZZ-B",
+      "name": "Free sample",
+      "description": null,
+      "quantity": 4,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 12.5,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 0.0,
+      "tax": 0.0,
+      "total": 0.0,
+      "discount": {
+        "percent": 100.0,
+        "amount": 50.0
+      }
+    },
+    {
+      "code": "ZZ-C",
+      "name": "Screws",
+      "description": null,
+      "quantity": 250,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 100,
+      "price_unit": 40.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 90.0,
+      "tax": 22.95,
+      "total": 112.95,
+      "discount": {
+        "percent": 10.0,
+        "amount": 10.0
+      }
+    },
+    {
+      "code": "ZZ-D",
+      "name": "Surcharged goods",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 105.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 105.0,
+      "tax": 26.78,
+      "total": 131.78
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 25.5,
+      "base": 1045.0,
+      "amount": 266.48,
+      "code": "S"
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "10001235",
+    "amount": 1311.48,
+    "due_date": "2026-12-09",
+    "payment_means_code": "58"
+  },
+  "_comment": "Invented fixture: 15 %, 100 % and per-hundred discounts (AC-17, AC-18)."
+}

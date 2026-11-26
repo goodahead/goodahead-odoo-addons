@@ -12,7 +12,7 @@ Fake `ZZ-…` identifiers avoid matching existing partners.
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
 )
@@ -53,16 +53,16 @@ class TestVendorMatching(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_registry_variants_formatting_only(self):
-        v = self.Partner._registry_variants("1234567-8")
-        self.assertIn("1234567-8", v)
-        self.assertIn("12345678", v)
+        v = self.Partner._registry_variants("0000007-8")
+        self.assertIn("0000007-8", v)
+        self.assertIn("00000078", v)
         self.assertIn("HRB12345", self.Partner._registry_variants("HRB 12345"))
 
     def test_vat_country_code(self):
         self.assertEqual(self.Partner._vat_country_code("DE811234567"), "DE")
-        self.assertEqual(self.Partner._vat_country_code("FI12345678"), "FI")
+        self.assertEqual(self.Partner._vat_country_code("FI00000078"), "FI")
         self.assertEqual(self.Partner._vat_country_code("ATU12345678"), "AT")
-        self.assertIsNone(self.Partner._vat_country_code("1234567-8"))
+        self.assertIsNone(self.Partner._vat_country_code("0000007-8"))
 
     # ------------------------------------------------------------------
     # The plan step itself

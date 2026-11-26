@@ -15,7 +15,7 @@ class TestImportVisibility(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.AiImport = cls.env["ai.invoice.import"]
+        cls.AiImport = cls.env["goodahead.invoice.import"]
         cls.invoicing = new_test_user(
             cls.env,
             login="ai_vis_invoicing",
@@ -58,9 +58,9 @@ class TestImportVisibility(TransactionCase):
             self.env.ref("account.group_account_manager"),
         }
         for xmlid in (
-            "goodahead_invoice_ai_import.menu_ai_invoice_import",
-            "goodahead_invoice_ai_import.menu_ai_invoice_import_config",
-            "goodahead_invoice_ai_import.menu_vendor_data_suggestion",
+            "goodahead_invoice_import.menu_ai_invoice_import",
+            "goodahead_invoice_import.menu_ai_invoice_import_config",
+            "goodahead_invoice_import.menu_vendor_data_suggestion",
         ):
             with self.subTest(menu=xmlid):
                 self.assertEqual(set(self.env.ref(xmlid).groups_id), expected)
@@ -72,8 +72,8 @@ class TestImportVisibility(TransactionCase):
             ._visible_menu_ids()
         )
         for xmlid in (
-            "goodahead_invoice_ai_import.menu_ai_invoice_import",
-            "goodahead_invoice_ai_import.menu_ai_invoice_import_config",
+            "goodahead_invoice_import.menu_ai_invoice_import",
+            "goodahead_invoice_import.menu_ai_invoice_import_config",
         ):
             with self.subTest(menu=xmlid):
                 self.assertNotIn(self.env.ref(xmlid).id, visible)

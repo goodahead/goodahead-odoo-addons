@@ -1,19 +1,37 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The import does not grant approval step 1: an imported bill waits for a human.
+"""The import does NOT grant approval step 1. An imported bill waits for a human.
 
-Step 1 compares the bill against its document, which is exactly what an extraction can get
-wrong, so the import puts the bill into step 1 without completing it. The control is a bill
-whose step 1 is granted by hand and must move to `reviewed`, proving the approval machinery
-is live.
+🔴 THIS FILE USED TO ASSERT THE OPPOSITE, AND THAT IS WHY IT IS WORTH READING.
+The original design said the import would trigger step 1 via a hook, and was built as
+"the import CLEARS step 1". So an imported bill arrived already
+reviewed — by OdooBot — and went to the finance director with no human having compared it
+against the PDF.
+
+⚠️ That contradicted the reason an approval add-on that hooks into posting exists at all: an
+AI or OCR import makes the gap larger, not smaller, because a bill can now exist without
+anyone having read a line of it. Step 1 checks
+the vendor, the dates, the lines and the accounts against the document — which is exactly what an
+extraction can get wrong, and the only step that would catch it.
+
+The decision, once an import was seen landing stamped *"Reviewed by OdooBot"*: **"trigger
+step 1" means put the bill INTO step 1, not complete it.**
+
+🔴 THE CONTROL HAD TO CHANGE SHAPE WITH THE BEHAVIOUR, AND THIS IS THE INTERESTING PART.
+The old control was a hand-made bill, and the test asserted the two read DIFFERENTLY. That worked
+while the import moved the field. Now the import leaves it alone — so a hand-made bill and an
+imported one both read `to_review`, and "they are the same" would pass just as well against a
+database where the approval machinery is broken, absent, or stuck. So the control is inverted
+too: a bill whose step 1 IS granted, which must read `reviewed`. That proves the field can still
+move, which is what makes the imported bill sitting at `to_review` mean anything at all.
 """
 
 from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -33,7 +51,7 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
         super().setUp()
         if "bill_approval_state" not in self.AM._fields:
             self.skipTest(
-                "goodahead_bill_approval is not installed; this file tests the "
+                "no approval add-on that hooks into posting is installed; this file tests the "
                 "integration between the two modules and there is nothing to "
                 "integrate with"
             )
@@ -43,12 +61,12 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
     def _extracted(self):
         return {
             "type": "Invoice",
-            "invoice_number": "BA-1",
+            "invoice_number": "F33-1",
             "issue_date": "2026-10-01",
             "currency": self.company.currency_id.name,
             "seller": {
-                "name": "ZZ BA Vendor Inc",
-                "business_id": "ZZ-BA-0001",
+                "name": "ZZ F33 Vendor Inc",
+                "business_id": "ZZ-F33-0001",
                 "country_code": self.company.country_id.code or "US",
             },
             "buyer": {
@@ -56,7 +74,7 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
                 "country_code": self.company.country_id.code or "US",
             },
             "lines": [{
-                "product_code": "BA-SKU",
+                "product_code": "F33-SKU",
                 "name": "A thing on a bill",
                 "quantity": 1.0,
                 "unit_code": "C62",
@@ -84,12 +102,12 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
         extracted = self._extracted()
         xml_bytes = generate_peppol_invoice_xml(extracted)
         attachment = self.env["ir.attachment"].create({
-            "name": "ba.pdf",
+            "name": "f33.pdf",
             "raw": b"%PDF-1.4 fake",
             "mimetype": "application/pdf",
         })
-        rec = self.env["ai.invoice.import"].create({
-            "name": "ba.pdf",
+        rec = self.env["goodahead.invoice.import"].create({
+            "name": "f33.pdf",
             "company_id": self.company.id,
             "pdf_attachment_id": attachment.id,
         })
@@ -112,7 +130,7 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
             ("type", "=", "purchase"), ("company_id", "=", self.company.id),
         ], limit=1)
         partner = self.env["res.partner"].create({
-            "name": "ZZ BA Hand Vendor", "is_company": True})
+            "name": "ZZ F33 Hand Vendor", "is_company": True})
         return self.AM.create({
             "move_type": "in_invoice",
             "journal_id": journal.id,
@@ -142,13 +160,16 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
         )
         self.assertEqual(
             imported.state, "draft",
-            "the import must NOT post the bill. `_autopost_bill` is overridden in "
+            "🔴 the import must NOT post the bill. `_autopost_bill` is overridden in "
             "the approval module for exactly this, so this assertion is also the one "
             "that fails if that override is lost",
         )
 
-        # Control: granting step 1 by hand must move the state, which shows the field is
-        # live and the imported bill staying put is meaningful.
+        # 🔴 THE CONTROL, AND IT IS NOT THE OBVIOUS ONE. A hand-made bill is also
+        # `to_review`, so comparing the two proves nothing now -- "they match" would pass
+        # against a database where the approval machinery never works at all. Granting step 1
+        # by hand and watching the state MOVE is what shows the field is live, and therefore
+        # that the imported bill staying put is a decision rather than a dead feature.
         control = self._hand_made_bill()
         self.assertEqual(control.bill_approval_state, "to_review")
         control._bill_approval_grant_step_1(note="the control for this test")
@@ -181,7 +202,9 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
         )
 
     def test_the_chatter_does_not_claim_anybody_reviewed_it(self):
-        """The chatter records the AI import but not that approval step 1 was given."""
+        """The chatter still records that an AI imported it. What it must not say is
+        that approval step 1 was given -- the screen has to be able to show that no
+        human judgement has been applied yet."""
         imported = self._run_import()
         bodies = " ".join(imported.message_ids.mapped("body"))
         self.assertIn("Imported via AI invoice extraction", bodies)
@@ -197,17 +220,25 @@ class TestTheImportDoesNotGrantStepOne(TransactionCase):
     # ------------------------------------------------- the soft dependency
 
     def test_the_import_module_does_not_depend_on_the_approval_module(self):
-        """The AI import must stay installable without the approval module."""
+        """⚠️ A `depends` entry here would force the approval module onto every project
+        that wants the AI import, which is the opposite of the standing rule that generic
+        things stay independent. Still true now that there is no hook at all."""
         manifest = self.env["ir.module.module"].search([
             ("name", "=", "goodahead_invoice_ai_import")], limit=1)
         self.assertTrue(manifest)
-        self.assertNotIn(
-            "goodahead_bill_approval",
-            manifest.dependencies_id.mapped("name"),
-        )
+        # No dependency on any bill-approval add-on, whatever it is called.
+        self.assertFalse([
+            name for name in manifest.dependencies_id.mapped("name")
+            if "bill_approval" in name
+        ])
 
     def test_the_import_never_calls_the_grant_at_all(self):
-        """The grant method is replaced by a recorder and the import must never call it."""
+        """🔴 The strongest form of this, and the one that survives a refactor.
+
+        The assertions above would still pass if the import called the grant and something
+        else happened to undo it. This one proves the call is not made: the method is
+        replaced by a recorder, and the import must leave it untouched.
+        """
         calls = []
 
         def recorder(self_move, *args, **kwargs):

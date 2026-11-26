@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented error answer: status 4701 (validation failed) with the counters group -->
+<Response version="1.0">
+ <Status>ERR</Status>
+ <StatusCode>4701</StatusCode>
+ <FreeText language="en">Error: The invoice datafile fails validation. Reason: </FreeText>
+ <Content>
+  <Group>
+   <Value type="Saldo">75</Value>
+   <Value type="CostInCredits">0</Value>
+  </Group>
+ </Content>
+</Response>

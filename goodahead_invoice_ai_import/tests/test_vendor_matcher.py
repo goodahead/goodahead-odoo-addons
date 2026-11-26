@@ -80,7 +80,7 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
         self.assertTrue(
             (klass.__module__ or "").startswith(
-                "odoo.addons.goodahead_invoice_ai_import"
+                "odoo.addons.goodahead_invoice_import"
             ),
             "_ai_find_vendor must be defined by this module, not inherited from "
             "something that happens to carry the name: %s" % klass.__module__,

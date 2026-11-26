@@ -1,0 +1,143 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Finvoice Version="3.0">
+  <!-- Invented fixture: buyer's order number, buyer reference and discounted rows (stated, rounding-off, amount-only) - T06. --><MessageTransmissionDetails>
+    <MessageSenderDetails>
+      <FromIdentifier>003700000035</FromIdentifier>
+      <FromIntermediator>APIX</FromIntermediator>
+    </MessageSenderDetails>
+    <MessageReceiverDetails>
+      <ToIdentifier>003700000019</ToIdentifier>
+      <ToIntermediator>EXAMPLEOP</ToIntermediator>
+    </MessageReceiverDetails>
+    <MessageDetails>
+      <MessageIdentifier>ZZ-IN-1</MessageIdentifier>
+      <MessageTimeStamp>2026-11-25T10:00:00+02:00</MessageTimeStamp>
+    </MessageDetails>
+  </MessageTransmissionDetails>
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+    <SellerPostalAddressDetails>
+      <SellerStreetName>Esimerkkikatu 1</SellerStreetName>
+      <SellerTownName>Helsinki</SellerTownName>
+      <SellerPostCodeIdentifier>00100</SellerPostCodeIdentifier>
+      <CountryCode>FI</CountryCode>
+    </SellerPostalAddressDetails>
+  </SellerPartyDetails>
+  <SellerInformationDetails>
+    <SellerAccountDetails>
+      <SellerAccountID IdentificationSchemeName="IBAN">FI1612345600000002</SellerAccountID>
+      <SellerBic IdentificationSchemeName="BIC">EXMPFIHH</SellerBic>
+    </SellerAccountDetails>
+  </SellerInformationDetails>
+  <BuyerPartyDetails>
+    <BuyerPartyIdentifier>0000001-9</BuyerPartyIdentifier>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+    <BuyerOrganisationTaxCode>FI00000019</BuyerOrganisationTaxCode>
+    <BuyerPostalAddressDetails>
+      <BuyerStreetName>Testitie 2</BuyerStreetName>
+      <BuyerTownName>Tampere</BuyerTownName>
+      <BuyerPostCodeIdentifier>33100</BuyerPostCodeIdentifier>
+      <CountryCode>FI</CountryCode>
+    </BuyerPostalAddressDetails>
+  </BuyerPartyDetails>
+  <BuyerContactPersonName>Erkki Esimerkki</BuyerContactPersonName>
+  <BuyerCommunicationDetails>
+    <BuyerEmailaddressIdentifier>ostoreskontra@example.com</BuyerEmailaddressIdentifier>
+  </BuyerCommunicationDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>ZZ-V-2001</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261125</InvoiceDate>
+    <OrderIdentifier>PO-ZZ-4711</OrderIdentifier>
+    <BuyerReferenceIdentifier>Test User / cost centre 42</BuyerReferenceIdentifier>
+    <RowsTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">1017,86</RowsTotalVatExcludedAmount>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">1017,86</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">259,55</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">1277,41</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">1017,86</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatCode>S</VatCode>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">259,55</VatRateAmount>
+    </VatSpecificationDetails>
+    <PaymentTermsDetails>
+      <InvoiceDueDate Format="CCYYMMDD">20261209</InvoiceDueDate>
+    </PaymentTermsDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>ZZ-A</ArticleIdentifier>
+    <ArticleName>Stated discount</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="C62" QuantityUnitCode="kpl">10</InvoicedQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">100,00</UnitPriceAmount>
+    <RowDiscountPercent>15</RowDiscountPercent>
+    <RowDiscountAmount AmountCurrencyIdentifier="EUR">150,00</RowDiscountAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatCode>S</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">216,75</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">850,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">1066,75</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>ZZ-B</ArticleIdentifier>
+    <ArticleName>Rounding-off discount</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="C62" QuantityUnitCode="kpl">3</InvoicedQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">9,99</UnitPriceAmount>
+    <RowDiscountPercent>7</RowDiscountPercent>
+    <RowDiscountAmount AmountCurrencyIdentifier="EUR">2,11</RowDiscountAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatCode>S</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">7,10</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">27,86</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">34,96</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>ZZ-C</ArticleIdentifier>
+    <ArticleName>Amount-only discount</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="C62" QuantityUnitCode="kpl">4</InvoicedQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">25,00</UnitPriceAmount>
+    <RowDiscountAmount AmountCurrencyIdentifier="EUR">10,00</RowDiscountAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatCode>S</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">22,95</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">90,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">112,95</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>ZZ-D</ArticleIdentifier>
+    <ArticleName>No discount</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="C62" QuantityUnitCode="kpl">1</InvoicedQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">50,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatCode>S</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">12,75</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">50,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">62,75</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261125</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">10001235</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">1277,41</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261209</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+  <InvoiceUrlNameText>APIX_PDFFILE</InvoiceUrlNameText>
+  <InvoiceUrlText>file://invoice.pdf</InvoiceUrlText>
+</Finvoice>

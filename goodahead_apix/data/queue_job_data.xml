@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- The APIX job channel, shared by receiving and sending (send ADR-0001):
+         APIX jobs run apart from other background work, so other backlogs
+         never delay e-invoices. Sending hangs root.apix.send under it.
+         Capacity is a deploy setting (e.g. root.apix:3,root.apix.send:2). -->
+    <record id="channel_apix" model="queue.job.channel">
+        <field name="name">apix</field>
+        <field name="parent_id" ref="queue_job.channel_root"/>
+    </record>
+
+</odoo>

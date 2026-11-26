@@ -57,7 +57,8 @@ class TestPromptProfiles(TransactionCase):
         cls.AM = cls.env["account.move"]
         cls.us = cls.env.ref("goodahead_invoice_ai_import.prompt_profile_us")
         cls.eu = cls.env.ref("goodahead_invoice_ai_import.prompt_profile_eu")
-        # Creating a company would need a chart of accounts.
+        # The existing company, as in `test_prompt_locale`: creating one needs
+        # a chart of accounts on this tree.
         cls.company = cls.env.company
 
     def _custom(self, **vals):

@@ -1,0 +1,117 @@
+{
+  "_comment": "Invented fixture: many lines in hours, kilograms and pieces under three VAT rates; the buyer has no VAT code.",
+  "message": {
+    "identifier": "102-7",
+    "timestamp": "2026-11-25T11:30:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {"edicode": "003700000019", "operator_identifier": "EXAMPLEOP"},
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": null,
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": null,
+    "email": null
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00002",
+    "date": "2026-11-25",
+    "due_date": "2026-12-25",
+    "currency": "EUR",
+    "original_number": null,
+    "payment_reference": "RF471234567890",
+    "note": null,
+    "totals": {"untaxed": 285.5, "tax": 54.72, "total": 340.22, "rounding": 0.0}
+  },
+  "lines": [
+    {
+      "code": "ZZ-WORK",
+      "name": "Consulting",
+      "description": null,
+      "quantity": 1.5,
+      "rec20_code": "HUR",
+      "unit_name": "h",
+      "base_quantity": 1,
+      "price_unit": 100.0,
+      "tax_percent": 25.5,
+      "untaxed": 150.0,
+      "tax": 38.25,
+      "total": 188.25
+    },
+    {
+      "code": "ZZ-FOOD",
+      "name": "Coffee beans",
+      "description": "Medium roast",
+      "quantity": 2.5,
+      "rec20_code": "KGM",
+      "unit_name": "kg",
+      "base_quantity": 1,
+      "price_unit": 30.2,
+      "tax_percent": 14,
+      "untaxed": 75.5,
+      "tax": 10.57,
+      "total": 86.07
+    },
+    {
+      "code": "ZZ-BOOK",
+      "name": "Example book",
+      "description": null,
+      "quantity": 2,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 30.0,
+      "tax_percent": 10,
+      "untaxed": 60.0,
+      "tax": 6.0,
+      "total": 66.0
+    },
+    {
+      "code": null,
+      "name": "Delivery",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 0.0,
+      "tax_percent": 25.5,
+      "untaxed": 0.0,
+      "tax": 0.0,
+      "total": 0.0
+    }
+  ],
+  "taxes": [
+    {"percent": 25.5, "base": 150.0, "amount": 38.25, "code": "S"},
+    {"percent": 14, "base": 75.5, "amount": 10.57, "code": "S"},
+    {"percent": 10, "base": 60.0, "amount": 6.0, "code": "S"}
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "RF471234567890",
+    "amount": 340.22,
+    "due_date": "2026-12-25"
+  }
+}

@@ -1,24 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
 <odoo>
     <!--
-        The Claude API key, "Test Connection" and "Sync Models" belong to
-        `goodahead_claude` and are rendered in its own settings block.
+        The Claude API key, "Test Connection" and "Sync Models" are NOT here.
+        `goodahead_claude` owns all three and renders them in its own settings
+        block, against the same key and the same model registry. This adds only
+        what is specific to reading invoices with Claude — which model to use
+        for extraction, and which prompt — to the invoice-import block that
+        `goodahead_invoice_import` declares.
     -->
-    <record id="res_config_settings_view_form" model="ir.ui.view">
+    <record id="res_config_settings_view_form_ai" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.ai.invoice.import</field>
         <field name="model">res.config.settings</field>
-        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
+        <field name="inherit_id" ref="goodahead_invoice_import.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//app[@name='account']" position="inside">
-                <block title="AI Invoice Import" name="ai_invoice_import">
+            <xpath expr="//setting[@id='ai_public_email_domains_setting']" position="before">
                     <setting string="Extraction Model"
                              help="Claude model used to read invoice PDFs, overriding the company default set under Claude. Leave empty to use the company default. The model must support PDF input.">
                         <div class="content-group">
                             <div class="row mt16">
                                 <label for="claude_invoice_model_id" class="col-lg-3 o_light_label"/>
-                                <!-- `_resolve_model` returns an explicit model
-                                     unchanged, so PDF support is enforced by this
-                                     domain. `pdf_supported` is set by Sync Models. -->
+                                <!-- The help text has always said the model must
+                                     support PDF input; this is the first thing that
+                                     makes it true. `_resolve_model` returns an
+                                     EXPLICIT model untouched — that contract is what
+                                     keeps fraud detection's pinned model working — so
+                                     a non-PDF model chosen here would be sent as
+                                     asked. The dropdown is where that gets prevented,
+                                     and `pdf_supported` is maintained by Sync Models. -->
                                 <field name="claude_invoice_model_id"
                                        domain="[('pdf_supported', '=', True)]"/>
                             </div>
@@ -39,36 +49,12 @@
                                        placeholder="From the company's country"/>
                             </div>
                             <button type="action"
-                                    name="%(action_prompt_profile)d"
+                                    name="%(goodahead_invoice_ai_import.action_prompt_profile)d"
                                     string="Manage Extraction Prompts"
                                     class="btn-link ps-0 mt8"
                                     icon="oi-arrow-right"/>
                         </div>
                     </setting>
-                    <!--
-                        This `help` is always visible under the label, unlike the
-                        field's tooltip, so the risk of removing a domain is
-                        stated here as well.
-                    -->
-                    <setting string="Domains That Never Identify a Vendor"
-                             help="Domains that must never identify a vendor — free mail providers, and placeholder domains an import writes — on top of the list shipped with this module. Leaving it empty keeps the shipped list; it does not switch the protection off. An entry written as -gmail.com REMOVES that domain, and if exactly one contact on it can receive bills, every invoice printing an address there is filed against that one company — see the field's tooltip.">
-                        <div class="content-group">
-                            <div class="row mt16">
-                                <field name="ai_public_email_domains"
-                                       widget="text"
-                                       placeholder="suomi24.fi, elisanet.fi, online.no"/>
-                            </div>
-                        </div>
-                    </setting>
-                    <setting string="Expense Categories"
-                             help="Map expense types to accounting accounts for imported lines">
-                        <button type="action"
-                                name="%(action_expense_category)d"
-                                string="Configure Expense Categories"
-                                class="btn-link ps-0"
-                                icon="oi-arrow-right"/>
-                    </setting>
-                </block>
             </xpath>
         </field>
     </record>

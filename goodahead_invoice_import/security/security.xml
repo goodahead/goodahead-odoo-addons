@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- AC-15: a user sees only the import records of the companies they are
+         allowed in, whatever source created them. Moved here from
+         goodahead_invoice_import_apix 19.0.1.0.0 (core/source split); upgrading that
+         add-on removes its copy. -->
+    <record id="rule_goodahead_invoice_import_company" model="ir.rule">
+        <field name="name">Invoice import: allowed companies</field>
+        <field name="model_id" ref="model_goodahead_invoice_import"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <!-- The vendor data drawn from one company's bills stays in that
+         company: a suggestion (an invoice's bank account, VAT, phone...) and
+         a candidate (a vendor offered with its bill counts) carry the bill's
+         company. -->
+    <record id="rule_goodahead_vendor_data_suggestion_company" model="ir.rule">
+        <field name="name">Vendor data suggestion: allowed companies</field>
+        <field name="model_id" ref="model_goodahead_vendor_data_suggestion"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_goodahead_vendor_candidate_company" model="ir.rule">
+        <field name="name">Vendor candidate: allowed companies</field>
+        <field name="model_id" ref="model_goodahead_vendor_candidate"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <!-- An identifier (phone, domain) is as readable as its partner: shared
+         contacts for everybody, a company's own contacts for that company. -->
+    <record id="rule_goodahead_partner_identifier_company" model="ir.rule">
+        <field name="name">Partner identifier: partners of allowed companies</field>
+        <field name="model_id" ref="model_goodahead_partner_identifier"/>
+        <field name="domain_force">['|', ('partner_id.company_id', '=', False), ('partner_id.company_id', 'in', company_ids)]</field>
+    </record>
+
+</odoo>

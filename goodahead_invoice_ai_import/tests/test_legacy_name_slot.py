@@ -25,10 +25,10 @@ from odoo.tests import TransactionCase, tagged
 # while this module is installed.
 from odoo.addons.account.models.partner import ResPartner as CoreResPartner
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     KNOWN_PROFILES,
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
@@ -576,7 +576,7 @@ class _ImportHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-hook.pdf",
                 "company_id": self.company.id,

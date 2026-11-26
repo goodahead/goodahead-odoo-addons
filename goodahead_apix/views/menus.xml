@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- Accounting ▸ Configuration ▸ E-invoicing ▸ APIX connection, for
+         accounting administrators (order: APIX connection, APIX migration
+         tool, Unit codes). The access rights are unchanged: billing users
+         still read the connection status where a send needs it.
+         `-group_account_invoice` drops the billing group an earlier version
+         linked, so an upgrade moves the menu in place. -->
+    <menuitem id="menu_goodahead_apix_connection"
+              name="APIX connection"
+              parent="goodahead_einvoice_base.menu_einvoice_config"
+              action="goodahead_apix_connection_action"
+              groups="-account.group_account_invoice,account.group_account_manager"
+              sequence="5"/>
+
+</odoo>

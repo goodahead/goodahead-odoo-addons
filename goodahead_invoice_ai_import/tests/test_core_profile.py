@@ -29,7 +29,7 @@ from odoo.exceptions import UserError
 from odoo.tests import BaseCase, TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     CORE_PROFILE_PARAM,
     KNOWN_PROFILES,
     OUR_MODULE,
@@ -400,7 +400,7 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         """An unrecognised core logs an ERROR naming the expectations and
         records `unknown`."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.core_profile",
+            "odoo.addons.goodahead_invoice_import.models.core_profile",
             logging.ERROR,
         ) as logs:
             profile = self.env["account.move"]._ai_record_core_profile(
@@ -421,7 +421,7 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         filter out real INFO records.
         """
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.core_profile",
+            "odoo.addons.goodahead_invoice_import.models.core_profile",
             logging.INFO,
         ) as logs:
             recorded = self.env["account.move"]._ai_record_core_profile()
@@ -529,7 +529,7 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         `_fail` imports nothing; it marks the record `failed` with the refusal
         text so it can be retried once the core is fixed.
         """
-        record = self.env["ai.invoice.import"].create({"name": "probe-refusal.pdf"})
+        record = self.env["goodahead.invoice.import"].create({"name": "probe-refusal.pdf"})
 
         def _forbidden(*args, **kwargs):
             raise AssertionError(
@@ -559,18 +559,18 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         )
         # The record can be retried.
         record.action_retry()
-        self.assertEqual(record.state, "draft")
+        self.assertEqual(record.state, "waiting")
 
     def test_a_finished_record_is_never_failed_by_the_core_refusal(self):
         """A finished import is not marked failed by the core refusal; the
         `done` guard runs before the profile check.
         """
-        record = self.env["ai.invoice.import"].create({"name": "probe-done.pdf"})
-        record.write({"state": "done", "error_message": False})
+        record = self.env["goodahead.invoice.import"].create({"name": "probe-done.pdf"})
+        record.write({"state": "imported", "error_message": False})
 
         with self._unrecognisable_core():
             result = record._process_import()
 
         self.assertEqual(result, "OK: already processed")
-        self.assertEqual(record.state, "done")
+        self.assertEqual(record.state, "imported")
         self.assertFalse(record.error_message)

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-15 Unit codes: editable, with the default-unit button above it, for
+         accounting administrators. Anyone else gets the same list read-only:
+         `uom.uom._get_view` drops `editable` and sets `edit="0"` (19.0 allows
+         no group on an extension view) and the button carries the group.
+        Units without a code are highlighted: they go out with their
+         name only. -->
+    <record id="uom_rec20_view_list" model="ir.ui.view">
+        <field name="name">uom.uom.list.einvoice.rec20</field>
+        <field name="model">uom.uom</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <list string="Unit codes" create="0" delete="0" editable="bottom"
+                  decoration-warning="not rec20_code">
+                <header>
+                    <button name="action_einvoice_default_unit" type="object" display="always"
+                            string="Default unit for unmapped incoming codes"
+                            icon="fa-cog" groups="account.group_account_manager"/>
+                </header>
+                <field name="name" readonly="1"/>
+                <field name="category_id" string="Category" readonly="1"/>
+                <field name="rec20_code" string="Rec 20"/>
+                <field name="einvoice_readable_name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="uom_rec20_view_search" model="ir.ui.view">
+        <field name="name">uom.uom.search.einvoice.rec20</field>
+        <field name="model">uom.uom</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <search string="Unit codes">
+                <field name="name"/>
+                <field name="rec20_code"/>
+                <filter name="without_code" string="Without code"
+                        domain="[('rec20_code', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- The company's default unit for unmapped incoming codes, opened from the
+         unit codes list. -->
+    <record id="res_company_view_form_einvoice_default_uom" model="ir.ui.view">
+        <field name="name">res.company.form.einvoice.default.uom</field>
+        <field name="model">res.company</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <form string="Default unit for unmapped incoming codes">
+                <sheet>
+                    <group>
+                        <field name="einvoice_default_uom_id" placeholder="— none —"
+                               options="{'no_create': True, 'no_open': True}"/>
+                    </group>
+                    <p class="text-muted">
+                        An incoming e-invoice line whose unit code no unit carries gets this
+                        unit, and the bill says so. Empty: such lines get no unit.
+                    </p>
+                </sheet>
+                <footer>
+                    <button string="Save" special="save" class="btn-primary"/>
+                    <button string="Discard" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_einvoice_unit_codes" model="ir.actions.act_window">
+        <field name="name">Unit codes</field>
+        <field name="res_model">uom.uom</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="uom_rec20_view_list"/>
+        <field name="search_view_id" ref="uom_rec20_view_search"/>
+        <field name="help" type="html">
+            <p>The UN/ECE Rec 20 code of each unit, used when invoices are sent and
+               received as e-invoices.</p>
+        </field>
+    </record>
+
+</odoo>

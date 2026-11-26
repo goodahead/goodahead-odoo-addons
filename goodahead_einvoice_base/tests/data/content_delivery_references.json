@@ -1,0 +1,117 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": "FI00000019",
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "EUR",
+    "original_number": null,
+    "payment_reference": "10001235",
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 120.0,
+      "tax": 30.6,
+      "total": 150.6,
+      "rounding": 0.0,
+      "rows": 120.0
+    },
+    "type_code_un": "380",
+    "order_number": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "seller_reference": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS",
+    "buyer_reference": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+  },
+  "lines": [
+    {
+      "code": "ZZ-A",
+      "name": "Goods with barcode",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 100.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 100.0,
+      "tax": 25.5,
+      "total": 125.5,
+      "gtin": "4006381333931"
+    },
+    {
+      "code": "ZZ-B",
+      "name": "Goods without barcode",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 20.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 20.0,
+      "tax": 5.1,
+      "total": 25.1,
+      "gtin": null
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 25.5,
+      "base": 120.0,
+      "amount": 30.6,
+      "code": "S"
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "10001235",
+    "amount": 150.6,
+    "due_date": "2026-12-09",
+    "payment_means_code": "58"
+  },
+  "_comment": "Invented fixture: delivery party, references at 70 characters, GTIN (AC-14, AC-19, AC-25).",
+  "delivery": {
+    "name": "Example Delivery Site With A Rather Long Name Oy",
+    "street": "Toimituskatu 5",
+    "zip": "20100",
+    "city": "Turku",
+    "country_code": "FI"
+  }
+}

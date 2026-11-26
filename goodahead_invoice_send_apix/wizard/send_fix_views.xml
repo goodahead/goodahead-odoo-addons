@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- SCR-07: the fix-it wizard. -->
+<odoo>
+    <record id="goodahead_invoice_send_fix_view_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.fix.form</field>
+        <field name="model">goodahead.invoice.send.fix</field>
+        <field name="arch" type="xml">
+            <form string="Fix e-invoice details">
+                <field name="move_id" invisible="1"/>
+                <field name="target_partner_id" invisible="1"/>
+                <field name="target_company_id" invisible="1"/>
+                <field name="lookup_company_id" invisible="1"/>
+                <field name="mode" invisible="1"/>
+                <field name="picked_result_id" invisible="1"/>
+                <field name="lookup_state" invisible="1"/>
+                <field name="delivery_state" invisible="1"/>
+                <div class="alert alert-info" role="status">
+                    <field name="notice" readonly="1"/>
+                </div>
+                <group string="Now">
+                    <field name="partner_id" readonly="1" invisible="mode != 'invoice'"/>
+                    <field name="partner_id" string="Contact" readonly="1"
+                           invisible="mode != 'partner'"/>
+                    <field name="company_id" string="APIX connection of" readonly="1"
+                           invisible="mode != 'partner'"/>
+                    <field name="company_id" string="Company" readonly="1"
+                           invisible="mode != 'company'"/>
+                    <field name="current_edicode" readonly="1"/>
+                    <field name="current_operator" readonly="1"/>
+                    <div colspan="2" class="text-muted" invisible="not current_from_commercial">
+                        <field name="current_from_commercial" invisible="1"/>
+                        From the commercial customer (used as fallback).
+                    </div>
+                </group>
+                <group string="Look up at APIX">
+                    <field name="lookup_business_id"/>
+                    <field name="lookup_name"/>
+                </group>
+                <div class="d-flex gap-2 mb-3">
+                    <button name="action_lookup" type="object" string="Look up at APIX"
+                            class="btn-secondary"/>
+                    <button name="action_check_delivery_method" type="object"
+                            string="Check delivery method" class="btn-secondary"
+                            invisible="mode != 'invoice'"/>
+                </div>
+                <div class="alert alert-info" role="status"
+                     invisible="lookup_state not in ('fix.found', 'fix.none_found')">
+                    <field name="lookup_message" readonly="1"/>
+                </div>
+                <div class="alert alert-warning" role="alert"
+                     invisible="lookup_state != 'fix.lookup_unavailable'">
+                    <field name="lookup_message" readonly="1"/>
+                </div>
+                <div class="alert alert-info" role="status"
+                     invisible="delivery_state != 'fix.delivery_method_shown'">
+                    <field name="delivery_message" readonly="1"/>
+                </div>
+                <div class="alert alert-warning" role="alert"
+                     invisible="delivery_state != 'fix.delivery_method_unavailable'">
+                    <field name="delivery_message" readonly="1"/>
+                </div>
+                <field name="result_ids" invisible="not result_ids" readonly="1" nolabel="1">
+                    <list create="0" delete="0" edit="0"
+                          decoration-bf="picked" decoration-warning="not operator_listed">
+                        <field name="picked" column_invisible="1"/>
+                        <field name="operator_listed" column_invisible="1"/>
+                        <field name="edicode"/>
+                        <field name="operator_name"/>
+                        <field name="receiver_name"/>
+                        <field name="business_id"/>
+                        <button name="action_use" type="object" string="Use this"
+                                invisible="picked"/>
+                        <field name="operator_note" widget="badge" decoration-warning="1"/>
+                    </list>
+                </field>
+                <field name="registry_fill" invisible="1"/>
+                <field name="vat_offer" invisible="1"/>
+                <div class="text-muted mb-2" invisible="not registry_fill">
+                    Save also adds the Business ID found,
+                    <field name="found_business_id" readonly="1" class="oe_inline"/>,
+                    where it has none.
+                </div>
+                <div class="o_row mb-3" invisible="not vat_offer">
+                    <field name="set_vat" nolabel="1"/>
+                    <label for="set_vat" string="Also set VAT number"/>
+                    <field name="vat_proposal" readonly="1" nolabel="1" class="oe_inline"/>
+                </div>
+                <group string="Or by hand">
+                    <field name="manual_edicode"/>
+                    <field name="manual_operator_id" options="{'no_create': True}"/>
+                </group>
+                <footer>
+                    <button name="action_save" type="object" string="Save" class="btn-primary"/>
+                    <button special="cancel" string="Cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="goodahead_invoice_send_fix_action" model="ir.actions.act_window">
+        <field name="name">Fix e-invoice details</field>
+        <field name="res_model">goodahead.invoice.send.fix</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

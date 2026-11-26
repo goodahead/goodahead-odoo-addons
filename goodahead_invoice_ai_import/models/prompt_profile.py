@@ -1,5 +1,6 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
 import re
 
 from odoo import _, api, fields, models
@@ -23,9 +24,11 @@ class InvoicePromptProfile(models.Model):
     settings; with none picked, the block is chosen from the company's country
     (`account.move._ai_prompt_locale`).
 
-    A built-in profile (US, EU) is composed from `LOCALE_BLOCKS` in code, not
-    from its own fields. Those fields are a read-only copy, refreshed on every
-    upgrade by `_sync_builtin_profiles`, so it can be viewed and duplicated.
+    🔴 A BUILT-IN PROFILE IS NOT READ FROM ITS OWN FIELDS. US and EU ship as
+    records so they can be chosen and duplicated, but the prompt they send is
+    composed from `LOCALE_BLOCKS` by code, which is what keeps the composed US
+    prompt byte-identical to the one the US deployment runs. Their fields are a copy,
+    refreshed on every upgrade by `_sync_builtin_profiles`, and read-only.
 
     A custom profile — a duplicate, edited — is sent as its fields say. The
     schema slots must keep the JSON keys the shipped blocks declare: the

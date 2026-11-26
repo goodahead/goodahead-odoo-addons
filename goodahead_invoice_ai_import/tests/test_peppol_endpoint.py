@@ -17,14 +17,14 @@ from lxml import etree
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.account_edi_ubl_cii.models.account_edi_common import EAS_MAPPING
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
     peppol_endpoint_for_party,
     peppol_endpoint_is_valid,
     sanitize_peppol_endpoint,
     vat_peppol_eas_codes,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
     PROFILE_SEARCH_PLAN_18,
 )
@@ -47,8 +47,8 @@ def _finnish_invoice():
         "currency": "EUR",
         "seller": {
             "name": "Nordic Demo Supplier Oy",
-            "vat": "FI23456780",
-            "business_id": "2345678-0",
+            "vat": "FI00000211",
+            "business_id": "0000021-1",
             "street": "Esimerkkikatu 1",
             "city": "HELSINKI",
             "state_code": None,
@@ -124,7 +124,7 @@ class TestPeppolEndpoint(TransactionCase):
         `EAS_MAPPING['FI']` has no VAT scheme on the search-plan core and `0213`
         on the legacy one, so the expectation is read from core's table.
         """
-        eas, endpoint = peppol_endpoint_for_party("FI", "FI23456780")
+        eas, endpoint = peppol_endpoint_for_party("FI", "FI00000211")
         fi_schemes = EAS_MAPPING.get("FI", {})
         vat_schemes = [
             code for code, field in fi_schemes.items() if field == "vat"
@@ -139,7 +139,7 @@ class TestPeppolEndpoint(TransactionCase):
                 vat_schemes,
                 "a scheme we emit must be one core maps to a VAT for FI",
             )
-            self.assertEqual(endpoint, "FI23456780")
+            self.assertEqual(endpoint, "FI00000211")
         else:
             self.assertEqual(
                 (eas, endpoint),
@@ -156,7 +156,7 @@ class TestPeppolEndpoint(TransactionCase):
         18.0 cores (both builds) lack the per-scheme character rule and would
         accept the pair silently, so the test is gated.
         """
-        error = self.Partner._build_error_peppol_endpoint("9925", "FI23456780")
+        error = self.Partner._build_error_peppol_endpoint("9925", "FI00000211")
         self.assertTrue(
             error,
             "core must still reject a Finnish VAT number under the Belgian "
@@ -213,7 +213,7 @@ class TestPeppolEndpoint(TransactionCase):
         the VAT's own prefix through core's table.
         """
         for country, vat in (
-            (358, "FI23456780"),
+            (358, "FI00000211"),
             (1, "123456789"),
             (49, 123456789),
             (None, 0),
@@ -271,7 +271,7 @@ class TestPeppolEndpoint(TransactionCase):
         """End to end: a numeric country and VAT still generate a document with both parties."""
         data = _finnish_invoice()
         data["seller"]["country_code"] = 358
-        data["seller"]["vat"] = 23456780
+        data["seller"]["vat"] = 211
         tree = etree.fromstring(generate_peppol_invoice_xml(data))
         self.assertIsNotNone(tree.find(".//cac:AccountingSupplierParty", NS))
         self.assertIsNotNone(tree.find(".//cac:AccountingCustomerParty", NS))
@@ -335,7 +335,7 @@ class TestPeppolEndpoint(TransactionCase):
 
     def test_the_validator_can_still_say_no(self):
         """Control: the validator rejects invalid endpoints."""
-        self.assertFalse(peppol_endpoint_is_valid("9925", "FI23456780"))
+        self.assertFalse(peppol_endpoint_is_valid("9925", "FI00000211"))
         self.assertFalse(peppol_endpoint_is_valid("9930", "DE 123 456"))
         self.assertFalse(peppol_endpoint_is_valid("9930", "D" * 51))
         self.assertTrue(peppol_endpoint_is_valid("9930", "DE123456789"))
@@ -366,7 +366,7 @@ class TestFinnishInvoiceImports(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        return self.env["ai.invoice.import"].create(
+        return self.env["goodahead.invoice.import"].create(
             {
                 "name": "finnish-invoice.pdf",
                 "company_id": self.company.id,
@@ -395,7 +395,7 @@ class TestFinnishInvoiceImports(TransactionCase):
         rec, result = self._run(_finnish_invoice())
 
         self.assertTrue(result.startswith("OK"), result)
-        self.assertEqual(rec.state, "done", rec.error_message or "")
+        self.assertEqual(rec.state, "imported", rec.error_message or "")
         self.assertTrue(rec.move_id, "a vendor bill must be created and linked")
         # No line is added for an unmapped tax; without a 25.5% purchase tax the
         # bill shows the mismatch banner instead.
@@ -438,7 +438,7 @@ class TestFinnishInvoiceImports(TransactionCase):
             ".//cac:AccountingSupplierParty//cac:PartyTaxScheme/cbc:CompanyID", NS
         )
         self.assertIsNotNone(company_id)
-        self.assertEqual(company_id.text, "FI23456780")
+        self.assertEqual(company_id.text, "FI00000211")
 
     def test_a_vendor_with_an_iban_and_no_aba_still_imports(self):
         """The Finnish vendor's IBAN reaches the UBL `PaymentMeans`."""
@@ -474,7 +474,7 @@ class TestFinnishInvoiceImports(TransactionCase):
         rec, result = self._run(extracted)
 
         self.assertTrue(result.startswith("OK"), result)
-        self.assertEqual(rec.state, "done", rec.error_message or "")
+        self.assertEqual(rec.state, "imported", rec.error_message or "")
         self.assertTrue(rec.move_id)
         # The vendor is unknown, so the bill says so in the chatter.
         self.assertTrue(

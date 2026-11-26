@@ -33,7 +33,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.claude_client import (
     ClaudeExtractionError,
     ClaudeInvoiceExtractor,
 )
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -50,13 +50,13 @@ class _StubClient:
         return self.response
 
 
-# A freight bill with bare amounts: two 1,874.25 lines, no tax, no currency
+# A freight bill with bare amounts: two 2,215.75 lines, no tax, no currency
 # marking of any kind.
 def _freight_extraction(**overrides):
     data = {
         "type": "Invoice",
         "invoice_number": "ZZ-FRT-1",
-        "issue_date": "2026-10-02",
+        "issue_date": "2026-02-03",
         "currency": None,
         CURRENCY_SYMBOL_KEY: None,
         "seller": {
@@ -73,8 +73,8 @@ def _freight_extraction(**overrides):
                 "name": "FREIGHT CHARGE %d" % n,
                 "quantity": 1.0,
                 "unit_code": "C62",
-                "price_unit": 1874.25,
-                "line_total": 1874.25,
+                "price_unit": 2215.75,
+                "line_total": 2215.75,
                 "tax_percent": 0.0,
                 "tax_amount": 0.0,
                 "tax_category": "Z",
@@ -84,16 +84,16 @@ def _freight_extraction(**overrides):
         "tax_subtotals": [
             {
                 "tax_percent": 0.0,
-                "taxable_amount": 3748.50,
+                "taxable_amount": 4431.50,
                 "tax_amount": 0.0,
                 "tax_category": "Z",
             }
         ],
         "totals": {
-            "line_extension": 3748.50,
-            "tax_exclusive": 3748.50,
-            "tax_inclusive": 3748.50,
-            "payable": 3748.50,
+            "line_extension": 4431.50,
+            "tax_exclusive": 4431.50,
+            "tax_inclusive": 4431.50,
+            "payable": 4431.50,
         },
     }
     data.update(overrides)
@@ -361,7 +361,7 @@ class TestCurrencyFromCountryRule(BaseCase):
         self.assertIn("AN ADDRESS SHOWS ITS COUNTRY WHEN ITS OWN FORMAT DOES",
                       flat)
         self.assertIn("a 2-letter US state with a ZIP is US", flat)
-        self.assertIn("'62701-1234' and '78701-4321' both count", flat)
+        self.assertIn("'72000-0100' and '14000-0100' both count", flat)
         self.assertIn("a ZIP+4 is still a ZIP", flat)
         self.assertIn(
             "Never take it from the currency, the language, or the other "
@@ -492,7 +492,7 @@ class TestCurrencyInferenceOnTheBill(_NoClaudeMixin, TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        return self.env["ai.invoice.import"].create(
+        return self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-freight.pdf",
                 "company_id": self.company.id,
@@ -634,7 +634,7 @@ class TestTheMarkerOnReimport(_NoClaudeMixin, TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        rec = self.env["ai.invoice.import"].create(
+        rec = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-freight.pdf",
                 "company_id": self.company.id,

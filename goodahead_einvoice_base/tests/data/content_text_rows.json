@@ -1,0 +1,127 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": "FI00000019",
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "EUR",
+    "original_number": null,
+    "payment_reference": "10001235",
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 110.0,
+      "tax": 25.5,
+      "total": 135.5,
+      "rounding": 0.0,
+      "rows": 110.0
+    },
+    "type_code_un": "380"
+  },
+  "lines": [
+    {
+      "kind": "text",
+      "texts": [
+        "Section A: deliveries"
+      ]
+    },
+    {
+      "code": "ZZ-A",
+      "name": "Standard goods",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 100.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 100.0,
+      "tax": 25.5,
+      "total": 125.5
+    },
+    {
+      "kind": "text",
+      "texts": [
+        "note-word-000 note-word-001 note-word-002 note-word-003 note-word-004 note-word-005 note-word-006 note-word-007 note-word-008 note-word-009 note-word-010 note-word-011 note-word-012 note-word-013 note-word-014 note-word-015 note-word-016 note-word-017 note-word-018 note-word-019 note-word-020 note-word-021 note-word-022 note-word-023 note-word-024 note-word-025 note-word-026 note-word-027 note-word-028 note-word-029 note-word-030 note-word-031 note-word-032 note-word-033 note-word-034 note-word-035",
+        "note-word-036 note-word-037 note-word-038 note-word-039 note-word-040 note-word-041 note-word-042 note-word-043 note-word-044 note-word-045 note-word-046 note-word-047 note-word-048 note-word-049 note-word-050 note-word-051 note-word-052 note-word-053 note-word-054 note-word-055 note-word-056 note-word-057 note-word-058 note-word-059 note-word-060 note-word-061 note-word-062 note-word-063 note-word-064 note-word-065 note-word-066 note-word-067 note-word-068 note-word-069 note-word-070 note-word-071",
+        "note-word-072 note-word-073 note-word-074 note-word-075 note-word-076 note-word-077 note-word-078 note-word-079"
+      ]
+    },
+    {
+      "code": "ZZ-D",
+      "name": "Unclassified goods",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 10.0,
+      "tax_percent": 0.0,
+      "tax_code": null,
+      "untaxed": 10.0,
+      "tax": 0.0,
+      "total": 10.0
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 25.5,
+      "base": 100.0,
+      "amount": 25.5,
+      "code": "S"
+    },
+    {
+      "percent": 0.0,
+      "base": 10.0,
+      "amount": 0.0,
+      "code": null,
+      "reason_lines": [],
+      "exemption_code": null
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "10001235",
+    "amount": 135.5,
+    "due_date": "2026-12-09",
+    "payment_means_code": "58"
+  },
+  "_comment": "Invented fixture: a heading and a long note between product lines (AC-16)."
+}

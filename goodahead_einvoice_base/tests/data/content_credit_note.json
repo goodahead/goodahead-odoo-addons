@@ -1,0 +1,94 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": "FI00000019",
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "credit_note",
+    "number": "RINV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "EUR",
+    "original_number": "INV/2026/00001",
+    "payment_reference": null,
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 80.0,
+      "tax": 20.4,
+      "total": 100.4,
+      "rounding": 0.0,
+      "rows": 80.0
+    },
+    "type_code_un": "381"
+  },
+  "lines": [
+    {
+      "code": "ZZ-A",
+      "name": "Discounted goods",
+      "description": null,
+      "quantity": 2,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 50.0,
+      "tax_percent": 25.5,
+      "tax_code": "S",
+      "untaxed": 80.0,
+      "tax": 20.4,
+      "total": 100.4,
+      "discount": {
+        "percent": 20.0,
+        "amount": 20.0
+      }
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 25.5,
+      "base": 80.0,
+      "amount": 20.4,
+      "code": "S"
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": null,
+    "amount": 100.4,
+    "due_date": "2026-12-09",
+    "payment_means_code": "58"
+  },
+  "_comment": "Invented fixture: credit note with a discounted row (AC-18, AC-20)."
+}

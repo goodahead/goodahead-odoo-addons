@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!--
+        THE REVIEW DIALOG. What "Review" opens, from the bill form AND from a
+        row of the queue.
+
+        🔴 IT REPLACED A RAW LIST IN A MODAL, and the brief for this file is
+        that the list was not readable for a human: the design called for a
+        wizard, a modal, and clarity.
+
+        Five columns and no more, each pinned. The nine-column version failed in
+        a way that is worth writing down because it is not visible from an arch:
+        a Char column in a list SIZES TO ITS CONTENT, so `note` — a whole
+        sentence, repeated nearly verbatim on every row of a kind — took most of
+        the width and the two columns the screen exists for rendered as
+        `ar@northwind….` and `(212) 555-0…`. Here `width=` pins every column that
+        is not one of those two, so the free text can only take what is left.
+    -->
+
+    <record id="view_vendor_data_review_form" model="ir.ui.view">
+        <field name="name">goodahead.vendor.data.review.form</field>
+        <field name="model">goodahead.vendor.data.review</field>
+        <field name="arch" type="xml">
+            <form>
+                <!-- The vendor and the bill, once. ⚠️ A `<field>` renders inside
+                     Odoo's `o_field_widget` wrapper, which is a BLOCK stretched
+                     to the column — the trap that cost two attempts on the thin
+                     line in `views/account_move.xml`. It is harmless here and
+                     only here, because this line is meant to be a block on its
+                     own row. Do not copy the shape into anything inline. -->
+                <field name="heading" nolabel="1" readonly="1"
+                       class="fs-5 fw-bold mb-0"/>
+                <!-- ⚠️ "plus the two that always wait for a person" was the
+                     first wording, and read in a browser on a bill with NO
+                     money rows it says there are two of them. It meant two
+                     KINDS — a bank account and a tax id. Name them instead of
+                     counting them. -->
+                <p class="text-muted">
+                    Everything the vendor record was MISSING has already been
+                    filled in and logged. These are the details that contradict
+                    it, together with anything that always waits for a person —
+                    a bank account or a tax id. Only the ticked ones are
+                    written.
+                </p>
+
+                <!-- 🔴 THE MONEY WARNING IS A FULL-WIDTH LINE, NOT A COLUMN.
+                     Invoice fraud IS a changed bank account, and vendor
+                     invoices do carry printed warnings about that exact
+                     scam. A sentence that says so has to be
+                     readable; a column gets what the table leaves, which was
+                     measured at ~130 px here. -->
+                <div class="alert alert-danger py-2 px-3" role="alert"
+                     invisible="not has_sensitive">
+                    <field name="has_sensitive" invisible="1"/>
+                    A bank account or a tax ID is on this list. It is not
+                    ticked, and it should not be ticked until somebody has
+                    confirmed the number with the vendor — by telephone, on a
+                    number you already had, not one printed on this invoice.
+                </div>
+
+                <field name="line_ids" nolabel="1">
+                    <!-- 🔴 `editable` IS NOT A STYLE CHOICE HERE. A Boolean in a
+                         read-only list renders as a DISABLED checkbox, so
+                         without it the one control this dialog has cannot be
+                         clicked. Everything else on the row is `readonly="1"`:
+                         the row is a comparison, and the only thing a person
+                         changes is the tick. -->
+                    <list editable="bottom" create="false" delete="false"
+                          decoration-danger="is_sensitive">
+                        <field name="selected" width="70px"/>
+                        <field name="field_label" readonly="1" width="150px"/>
+                        <!-- 🔴 THESE TWO ARE PINNED WIDE AND EVERYTHING ELSE
+                             GIVES WAY TO THEM. Measured in the dialog: with
+                             only the small columns pinned, a 650 px modal gave
+                             the comparison 89 px a side and it read
+                             `ar@krown…` / `(973) 305…` — the same clipping
+                             three times over now, in three different views. A
+                             pinned column makes the TABLE scroll instead of the
+                             VALUE truncate, and a person can scroll. -->
+                        <field name="invoice_value" readonly="1" width="230px"/>
+                        <field name="record_value" readonly="1" width="230px"/>
+                        <!-- 🔴 THE MONEY MARKER IS A COLUMN OF ITS OWN, not only
+                             the red row. `decoration-danger` is colour, and
+                             colour alone is not a marker somebody can rely on —
+                             the backend follows the OS dark/light setting and
+                             this dialog is read by whoever owns vendor data,
+                             not by whoever drew it. -->
+                        <field name="is_sensitive" readonly="1" width="80px"/>
+                        <!-- Short, and pinned. See `_compute_why`: showing the
+                             suggestion's full `note` here reproduced the exact
+                             squeeze this dialog replaced — measured at 1140 px,
+                             "On this invoice" became `ar@krown…`. -->
+                        <field name="why" readonly="1" width="180px"/>
+                        <field name="field_name" column_invisible="True"/>
+                        <field name="note" readonly="1" optional="hide"/>
+                    </list>
+                </field>
+
+                <footer>
+                    <button name="action_apply_selected" type="object"
+                            string="Apply selected" class="btn-primary"
+                            data-hotkey="q"/>
+                    <!-- Three buttons because there are three different
+                         answers, and collapsing any two loses one of them:
+                         apply what is ticked; hand the whole thing to the
+                         queue (the rows stay PENDING); or close without
+                         saying anything at all. -->
+                    <button name="action_not_now" type="object"
+                            string="Not now" class="btn-secondary"
+                            help="Leaves every row pending, so they go to the vendor-data queue. Never the same person's problem twice."/>
+                    <button string="Cancel" class="btn-secondary"
+                            special="cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

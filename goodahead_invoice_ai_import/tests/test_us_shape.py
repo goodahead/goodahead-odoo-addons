@@ -15,7 +15,7 @@ from lxml import etree
 from odoo.exceptions import ValidationError
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -341,7 +341,7 @@ class TestUsShape(TransactionCase):
             seller={
                 "iban": None,
                 "routing_number": None,
-                "account_number": "FI16400010000000017",  # one digit too many
+                "account_number": "FI29123456000004521",  # one digit too many
             }
         )
 
@@ -349,7 +349,7 @@ class TestUsShape(TransactionCase):
 
         self.assertEqual(
             extracted["seller"]["account_number_rejected"],
-            "FI16400010000000017",
+            "FI29123456000004521",
         )
         self.assertIsNone(extracted["seller"]["account_number"])
 
@@ -359,7 +359,7 @@ class TestUsShape(TransactionCase):
             seller={
                 "iban": None,
                 "routing_number": None,
-                "account_number": "FI1640001000000017",  # valid
+                "account_number": "FI2912345600004521",  # valid
             }
         )
 
@@ -486,7 +486,7 @@ class TestUsShape(TransactionCase):
         """Shipped categories have no company, so every company sees them."""
         Category = self.env["goodahead.expense.category"]
         shipped = self.env.ref(
-            "goodahead_invoice_ai_import.expense_category_goods"
+            "goodahead_invoice_import.expense_category_goods"
         )
         self.assertFalse(
             shipped.company_id,
@@ -686,7 +686,7 @@ class TestInboundLimits(TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.env = cls.env(context=dict(cls.env.context, tracking_disable=True))
-        cls.Import = cls.env["ai.invoice.import"]
+        cls.Import = cls.env["goodahead.invoice.import"]
 
     def _msg(self, attachments):
         return {
@@ -800,7 +800,7 @@ class TestInboundLimits(TransactionCase):
         """Without an alias company, `env.company` is used and a warning is
         logged."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.ai_invoice_import",
+            "odoo.addons.goodahead_invoice_import.models.goodahead_invoice_import",
             level="WARNING",
         ) as logs:
             with patch.object(
