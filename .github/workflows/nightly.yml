@@ -58,6 +58,9 @@ jobs:
       - name: Check out queue_job (OCA/queue ${{ matrix.series }})
         run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/OCA/queue.git oca-queue
 
+      - name: Check out l10n_fi_edicode (OCA/l10n-finland ${{ matrix.series }})
+        run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/OCA/l10n-finland.git oca-l10n-finland
+
       - name: Record the tested commits
         id: commits
         run: |
@@ -68,6 +71,7 @@ jobs:
             echo "- Odoo: [\`${odoo_sha:0:10}\`](https://github.com/odoo/odoo/commit/$odoo_sha) ($(git -C odoo log -1 --format=%cI))"
             echo "- Modules: \`$(git -C addons rev-parse --short HEAD)\`"
             echo "- queue_job: \`$(git -C oca-queue rev-parse --short HEAD)\`"
+            echo "- l10n_fi_edicode: \`$(git -C oca-l10n-finland rev-parse --short HEAD)\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-python@v5
@@ -92,14 +96,19 @@ jobs:
 
       - name: Run the tests
         run: |
-          # Only queue_job from OCA/queue: the rest of that repo has dependencies
-          # this run does not install.
+          # Only queue_job from OCA/queue and l10n_fi_edicode from
+          # OCA/l10n-finland: the rest of those repos has dependencies this run
+          # does not install.
           mkdir -p oca-addons
           ln -s "$PWD/oca-queue/queue_job" oca-addons/queue_job
+          ln -s "$PWD/oca-l10n-finland/l10n_fi_edicode" oca-addons/l10n_fi_edicode
 
+          # The *_migration_community adapters need the community APIX modules
+          # (connector_apix and its stack), which this run does not install;
+          # they are only for sites moving off those modules.
           modules=$(for manifest in addons/*/__manifest__.py; do
             basename "$(dirname "$manifest")"
-          done | sort | paste -sd, -)
+          done | grep -v '_migration_community$' | sort | paste -sd, -)
           tags=$(echo "$modules" | sed 's/[^,]*/\/&/g')
           echo "Modules: $modules"
 
