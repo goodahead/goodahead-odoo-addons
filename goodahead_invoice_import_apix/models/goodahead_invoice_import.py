@@ -833,6 +833,11 @@ class GoodaheadInvoiceImport(models.Model):
             return "SKIPPED: not settled"
         Connection = self.env["goodahead.apix.connection"].sudo()
         receiving = Connection.search([("company_id", "=", record.company_id.id)], limit=1)
+        if not receiving or receiving.receiving_state == "off":
+            # Receiving is off (a neutralized copy, or switched off): nothing
+            # is said to APIX for this company.
+            _logger.info("APIX mark received for record %s skipped: receiving is off", self.id)
+            return "SKIPPED: receiving off"
         if receiving.receiving_state == MIRROR:
             _logger.info("APIX mark received for record %s skipped: mirror mode", self.id)
             return "SKIPPED: mirror"
@@ -856,8 +861,15 @@ class GoodaheadInvoiceImport(models.Model):
             )
         except ApixError as exc:
             return self._apix_mark_failed(exc.code, exc.message)
+        # The key is a secret that downloads or marks the package; once APIX has
+        # it as received it is not needed any more. A later listing that shows
+        # the package unreceived again brings it back (`_apix_listing_vals`).
         record.write(
-            {"apix_mark_confirmed": True, "apix_status": apix_listing.STORAGE_RECEIVED}
+            {
+                "apix_mark_confirmed": True,
+                "apix_status": apix_listing.STORAGE_RECEIVED,
+                "apix_storage_key": False,
+            }
         )
         record.message_post(body=_("Marked received at APIX."))
         _logger.info("APIX mark received for record %s confirmed", self.id)

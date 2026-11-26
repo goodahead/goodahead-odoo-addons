@@ -55,6 +55,12 @@ class MatchingPolicy:
     #: is not attached, not suggested, and its owner is named in the chatter
     #:. False keeps the AI import as it always was.
     bank_account_lookup_only: bool = False
+    #: True: the document's email, phone and website never fill the vendor's
+    #: empty fields by themselves (they become pending suggestions), and its
+    #: phone and web domain are learned as the vendor's identifiers only once
+    #: a person confirms the vendor or posts the bill. For documents anybody
+    #: can send: an AI-read PDF, anything that arrived by email.
+    contact_details_need_review: bool = False
 
     def __post_init__(self):
         unknown = (set(self.assign_by) | set(self.propose_by)) - set(ALL_KEYS)
@@ -79,8 +85,15 @@ class MatchingPolicy:
         return key in self.propose_by or key in self.assign_by
 
 
-#: Today's behaviour: every identifier assigns (the AI source).
+#: Today's behaviour: every identifier assigns.
 DEFAULT_POLICY = MatchingPolicy()
+
+#: The AI reading of a PDF: matched like `DEFAULT_POLICY`, but a bank account
+#: printed on the document is only looked up on the vendor, never created —
+#: a new one waits for a person as a sensitive suggestion — and its contact
+#: details wait for a person too. Anybody can send a PDF with a real vendor's
+#: name and their own IBAN, email address and web domain.
+AI_POLICY = MatchingPolicy(bank_account_lookup_only=True, contact_details_need_review=True)
 
 #: Structured e-invoices: only the VAT number and the Business ID set
 #: the vendor; phone, web/email domain and name only propose candidates; an

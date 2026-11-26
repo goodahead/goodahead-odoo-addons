@@ -77,6 +77,22 @@ Totals are checked within the platform's tolerance (the larger of 0.02 and
 that fails validation keeps its file and data on the import record; an
 Accountant can retry it from there without uploading again.
 
+### Limits
+
+Anybody can mail the import alias, and every invoice in a file becomes an
+import record and a job. Over a limit the file (or the whole email) becomes
+one *failed* import record that says why, and no job. System parameters
+(*Settings ▸ Technical ▸ System Parameters*); `0` switches a limit off:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `goodahead_invoice_import_finvoice.max_messages_per_file` | 500 | Most invoices imported from one Finvoice file |
+| `goodahead_invoice_import_finvoice.max_files_per_email` | 20 | Most Finvoice files imported from one email |
+| `goodahead_invoice_import_finvoice.max_file_bytes` | 20971520 (20 MiB) | Largest Finvoice file imported |
+
+The files that come with a multi-invoice file (images, delivery notes) are
+stored once and shared by its invoices' records.
+
 ## Usage
 
 1. Upload a Finvoice XML file from the vendor bills list of a purchase journal,
@@ -91,7 +107,10 @@ Accountant can retry it from there without uploading again.
 
 A Finvoice file is untrusted vendor input, like any document: it only creates
 draft bills, passes the duplicate rule, and can never create or overwrite a
-vendor. The parser does not load external entities.
+vendor. The parser does not load external entities, refuses a file above
+its size limit before reading it, and reads in time proportional to the
+file's size. For a file that arrived by email, the seller's email, phone and
+website wait for a person as suggestions.
 
 ## Known limitations
 

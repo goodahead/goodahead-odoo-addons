@@ -161,11 +161,15 @@ savepoint, logs what it could not do, and never calls APIX.
 - Storage keys (the per-package secret APIX returns in the listing) are
   readable by accounting administrators only, are kept out of the listing data
   and exports, and never appear in logs, job results or the chatter. The same
-  holds for transfer credentials (see `goodahead_apix`).
+  holds for transfer credentials (see `goodahead_apix`). A package's key is
+  cleared once APIX confirms the package as received (a later listing that
+  shows it unreceived brings it back), and nothing is marked received while
+  receiving is off.
 - Everything downloaded from APIX is untrusted vendor data: drafts only, the
   duplicate rule, no vendor creation or overwrite.
-- A neutralized database copy turns receiving off here and loses its
-  transfer credentials in `goodahead_apix`. In mirror mode the connection's
+- A neutralized database copy turns receiving off here, forgets every
+  package's storage key and loses its transfer credentials in
+  `goodahead_apix`. In mirror mode the connection's
   `_apix_copy_warning()` answers, so every sending surface warns that this
   copy holds production credentials.
 

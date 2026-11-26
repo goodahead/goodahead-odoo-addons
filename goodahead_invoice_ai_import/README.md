@@ -72,8 +72,25 @@ kept.
 4. **Job capacity** — the `root.ai_import` channel capacity is a `queue_job`
    deploy setting.
 
-System parameters (optional): `goodahead_invoice_ai_import.max_pdfs_per_message`
-(default 10) and `goodahead_invoice_ai_import.max_pdf_bytes` (default 15 MiB).
+### Limits
+
+Every reading is a paid Claude call, and anybody who knows the alias can send
+mail to it. The limits below apply wherever a reading is queued (mail,
+upload on a purchase journal, retry). A refused PDF becomes a *failed* import
+record that says which limit refused it, and no job; *Retry* it once the limit
+allows. All are system parameters (*Settings ▸ Technical ▸ System
+Parameters*, prefix `goodahead_invoice_ai_import.`); `0` switches a limit off.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `max_pdfs_per_message` | 10 | PDFs one email may send for reading |
+| `max_pdf_bytes` | 15728640 (15 MiB) | Largest PDF sent for reading |
+| `max_pdf_pages` | 50 | Most pages of a PDF sent for reading |
+| `daily_reads_per_company` | 1000 | Readings one company may queue in 24 hours |
+| `daily_reads_per_sender` | 200 | Readings one sender may queue in 24 hours (the mail's sender address, or the user who uploads) |
+| `recent_read_days` | 30 | A PDF already read in this many days is not read again; open the earlier import instead |
+
+An email over the daily budget becomes one failed record for the whole mail.
 
 ## Security
 

@@ -10,7 +10,7 @@
     "bill is saved. Moving a company over from an earlier APIX connector is "
     "the separate add-on goodahead_invoice_import_apix_migration. "
     "See README.md.",
-    "version": "19.0.1.10.5",
+    "version": "19.0.1.10.6",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

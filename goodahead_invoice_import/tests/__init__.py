@@ -12,3 +12,5 @@ from . import test_company_isolation
 from . import test_lib_purity
 from . import test_unit_mapping
 from . import test_finvoice_content_import
+from . import test_mail_contact_review
+from . import test_like_patterns

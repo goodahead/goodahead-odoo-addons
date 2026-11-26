@@ -509,6 +509,13 @@ class GoodaheadApixConnection(models.Model):
         for storage_id, group in packages.items():
             vals = Import._apix_listing_vals(group)
             record = by_storage_id.get(storage_id)
+            if (
+                record
+                and record.apix_mark_confirmed
+                and vals.get("apix_status") == apix_listing.STORAGE_RECEIVED
+            ):
+                # Received and confirmed: its key is not needed, not kept.
+                vals.pop("apix_storage_key", None)
             if record:
                 if self.receiving_state == "shadow" and record.apix_status != vals["apix_status"]:
                     vals.update(SHADOW_CLEAR)

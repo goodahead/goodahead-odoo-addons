@@ -234,6 +234,42 @@ class TestApixMarkReceived(TransactionCase):
         self.assertIn("shadow mode", "\n".join(str(b) for b in record.message_ids.mapped("body")))
         self.assertIn(record, self.Import._apix_unconfirmed_marks(self.company))
 
+    # -- the storage key is a secret: kept only while it is needed --------------
+
+    def test_receiving_off_never_marks(self):
+        record = self._closed("S-M10")
+        # As a neutralized copy has it (data/neutralize.sql): the switch-off
+        # gate is not passed, receiving is simply off with a mark queued.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE goodahead_apix_connection SET receiving_state = 'off' WHERE id = %s",
+            [self.connection.id],
+        )
+        self.env.invalidate_all()
+        self.assertEqual(self._attempt(self._jobs(record, "apix-mark:")), "SKIPPED: receiving off")
+        record.invalidate_recordset()
+        self.assertFalse(record.apix_mark_confirmed)
+        self.assertFalse(self.download_calls, "no APIX call at all while receiving is off")
+
+    def test_the_storage_key_is_cleared_once_received(self):
+        record = self._closed("S-M11")
+        self.assertTrue(record.sudo().apix_storage_key)
+        self._attempt(self._jobs(record, "apix-mark:"))
+        record.invalidate_recordset()
+        self.assertTrue(record.apix_mark_confirmed)
+        self.assertFalse(record.sudo().apix_storage_key, "no longer needed, not kept")
+        # A listing that still shows the package as received does not bring
+        # the key back...
+        received = dict(listing_group("S-M11"), StorageStatus="RECEIVED")
+        self.connection._apix_upsert_listing([received])
+        record.invalidate_recordset()
+        self.assertFalse(record.sudo().apix_storage_key)
+        # ...but one that shows it unreceived does: the daily check marks
+        # it again, and that needs the key.
+        self.connection._apix_upsert_listing([listing_group("S-M11")])
+        record.invalidate_recordset()
+        self.assertEqual(record.sudo().apix_storage_key, "key-S-M11")
+
     def test_no_storage_key_is_skipped(self):
         record = self._closed("S-M07")
         record.sudo().apix_storage_key = False

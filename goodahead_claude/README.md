@@ -27,7 +27,9 @@ Settings → General Settings → **Claude Connection** (administrators only):
 - **Max Output Tokens** — the default cap on the length of an answer (4096).
   A calling add-on may set its own.
 
-The settings are per company.
+The settings are per company. Neutralizing a database copy (`odoo-bin
+neutralize`) clears every company's API key, so a test or staging copy never
+calls Claude on the production account.
 
 ## Usage
 
@@ -52,6 +54,31 @@ text = client.extract_text(response)
 
 `messages_create` also takes `model`, `max_tokens`, `system`, `timeout` and
 `requires_pdf`, and supports prompt caching.
+
+The client's methods are for server code only: they cannot be called over
+RPC (`/web/dataset/call_kw`), whoever is logged in. **Test Connection** and
+**Sync Models** need an administrator.
+
+## Limits
+
+Every request is billed to the company's key, so the server caps what one
+request may ask for, whatever the caller passes. Both are system parameters
+(Settings → Technical → System Parameters):
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `goodahead_claude.max_output_tokens_ceiling` | 64000 | Most output tokens one request may ask for |
+| `goodahead_claude.timeout_ceiling` | 300 | Longest wait for one request, in seconds |
+
+The defaults are above what the shipped add-ons ask for (AI invoice import:
+16,000 tokens and 300 seconds).
+
+With worker processes (`workers` > 0) Odoo stops a request that runs longer
+than `limit_time_real` (default 120 s). A request that is still waiting then
+has been billed and its answer is lost, so the client keeps the timeout 15
+seconds below `limit_time_real` (never below 30 s) and logs a warning when it
+shortens one. For AI invoice import raise `limit_time_real` above 315 s on the
+workers that run its jobs.
 
 ## Tests
 

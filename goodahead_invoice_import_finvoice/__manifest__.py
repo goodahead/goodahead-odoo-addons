@@ -8,7 +8,7 @@
     "description": "Finvoice 2.0, 2.01 and 3.0 files by upload or email become "
     "draft vendor bills through the invoice import core, with strict vendor "
     "matching and no AI. See README.md.",
-    "version": "19.0.1.6.3",
+    "version": "19.0.1.6.4",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

@@ -193,6 +193,12 @@ class GoodaheadVendorDataSuggestion(models.Model):
         Identifier = self.env["goodahead.partner.identifier"]
         source = _("applied from bill %(bill)s", bill=self.move_id.display_name)
 
+        if self.field_name in ("phone", "email", "website") and not partner[self.field_name]:
+            # A detail that waited for a person although the field was empty
+            # (a document anybody can send): applying it fills the field. The
+            # contact's own write hook derives the identifiers.
+            partner[self.field_name] = value
+            return
         if self.field_name in ("phone", "email", "website"):
             pairs = Identifier._derive_from_contact(
                 **{self.field_name: value}

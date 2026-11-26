@@ -6,6 +6,18 @@ Newest first. Test counts are the gate at that version.
 
 ---
 
+19.0.1.10.6 — security fixes.
+
+### Security
+
+- Neutralizing a database copy also clears every package's storage key.
+- A package's storage key is cleared once APIX confirms the package as
+  received; a later listing that shows it unreceived brings it back.
+- Nothing is marked received while receiving is off.
+- Upgrade: `-u goodahead_invoice_import_apix`.
+
+---
+
 19.0.1.10.5 — release clean-up: invented test data, no functional change.
 
 - Comments, docstrings and tests no longer carry data from real documents

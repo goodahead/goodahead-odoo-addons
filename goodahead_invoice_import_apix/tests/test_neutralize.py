@@ -36,3 +36,23 @@ class TestApixNeutralize(TransactionCase):
         self.env.invalidate_all()
 
         self.assertEqual(set(connections.mapped("receiving_state")), {"off"})
+
+    def test_neutralize_forgets_the_package_storage_keys(self):
+        """A StorageKey alone downloads a package or marks it received: a
+        copy must not keep the live account's keys."""
+        record = self.env["goodahead.invoice.import"].sudo().create(
+            {
+                "name": "Neutralize Test package",
+                "company_id": self.env.company.id,
+                "source": "apix",
+                "apix_storage_id": "S-NEUTRAL-1",
+                "apix_storage_key": "key-S-NEUTRAL-1",
+            }
+        )
+        self.env.flush_all()
+
+        neutralize_database(self.env.cr)
+        self.env.invalidate_all()
+
+        self.assertFalse(record.apix_storage_key)
+        self.assertEqual(record.apix_storage_id, "S-NEUTRAL-1", "the id stays, for the history")

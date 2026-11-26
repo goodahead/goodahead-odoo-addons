@@ -38,9 +38,25 @@ SUPPORTED_VERSIONS = ("1.3", "2.0", "2.01", "3.0")
 
 XSD_PATH = os.path.join(os.path.dirname(__file__), "schema", "Finvoice3.0.xsd")
 
-_XML_DECL_RE = re.compile(r"<\?xml\s[^>]*?\?>")
-_DECL_ENCODING_RE = re.compile(rb"""<\?xml\s[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']""")
-_DOCTYPE_RE = re.compile(r"<!DOCTYPE[^>\[]*(\[[^\]]*\])?\s*>", re.IGNORECASE)
+#: The largest file read at all. Checked before anything else looks at the
+#: bytes: a Finvoice file comes from outside (mail, operator, upload), and
+#: every later step costs time in proportion to its size. A real Finvoice
+#: file with hundreds of invoices stays far below this. Callers may pass a
+#: smaller ``max_bytes`` (the receiving add-ons read theirs from a system
+#: parameter).
+MAX_FILE_BYTES = 20 * 1024 * 1024
+
+# Declarations and DOCTYPEs are found with plain linear scans, not with
+# regular expressions over the whole file: a pattern like
+# ``<\?xml\s[^>]*?\?>`` retried at every unclosed opener costs time in the
+# square of the file size, so a small crafted file could hold a worker for
+# hours. Only the tail of an encoding declaration is matched with a regular
+# expression, anchored at a position the scan found.
+_XML_DECL_OPEN = "<?xml"
+_XML_DECL_OPEN_BYTES = b"<?xml"
+_DECL_ENCODING_TAIL_RE = re.compile(rb"""encoding\s*=\s*["']([A-Za-z0-9._-]+)["']""")
+_DOCTYPE_OPEN_RE = re.compile(r"<!DOCTYPE", re.IGNORECASE)
+_ASCII_SPACE = b" \t\n\r\x0b\x0c"
 _WRAPPER = "FinvoiceFileWrapper"
 
 
@@ -60,15 +76,16 @@ class FinvoiceMessage:
     xml: bytes = field(default=b"", repr=False)
 
 
-def parse(xml_bytes):
+def parse(xml_bytes, max_bytes=None):
     """Return the Finvoice messages in ``xml_bytes``, in file order.
 
     Raises ``FinvoiceError``: ``finvoice.unreadable`` when the bytes are not XML
-    or hold no Finvoice message, ``finvoice.unsupported_version`` when any
+    or hold no Finvoice message, or are larger than ``max_bytes`` (default
+    ``MAX_FILE_BYTES``), ``finvoice.unsupported_version`` when any
     message is not version 1.3, 2.0, 2.01 or 3.0. A file is accepted or refused as a
     whole, so a batch never imports half-way.
     """
-    roots = _finvoice_roots(xml_bytes)
+    roots = _finvoice_roots(xml_bytes, max_bytes)
     messages = []
     for index, root in enumerate(roots):
         version = (root.get("Version") or "").strip()
@@ -175,8 +192,8 @@ def _decode(xml_bytes):
     if xml_bytes.startswith(b"\xef\xbb\xbf"):
         xml_bytes = xml_bytes[3:]
     candidates = []
-    for match in _DECL_ENCODING_RE.finditer(xml_bytes):
-        name = match.group(1).decode("ascii").lower()
+    for name in _declared_encodings(xml_bytes):
+        name = name.decode("ascii").lower()
         if name not in candidates:
             candidates.append(name)
     candidates += ["utf-8", "iso-8859-15"]
@@ -188,10 +205,147 @@ def _decode(xml_bytes):
     raise FinvoiceError(UNREADABLE, "The file is not readable text.")  # pragma: no cover
 
 
-def _finvoice_roots(xml_bytes):
+def _declared_encodings(data):
+    """The encoding names declared in ``data`` (bytes), in file order.
+
+    Same result as matching ``<\\?xml\\s[^>]*?encoding\\s*=\\s*["']([A-Za-z0-9._-]+)["']``
+    over the whole file, in linear time: each declaration is looked at only
+    up to the first ``>`` after it, and openers that share that ``>`` with
+    one already refused are skipped.
+    """
+    names = []
+    size = len(data)
+    search = 0
+    gt = -1
+    while True:
+        start = data.find(_XML_DECL_OPEN_BYTES, search)
+        if start < 0:
+            break
+        body = start + 6
+        if start + 5 >= size or data[start + 5] not in _ASCII_SPACE:
+            search = start + 1
+            continue
+        if gt < body:
+            gt = data.find(b">", body)
+        end = gt if gt >= 0 else size
+        found = None
+        at = data.find(b"encoding", body, end)
+        while at >= 0:
+            match = _DECL_ENCODING_TAIL_RE.match(data, at, end)
+            if match:
+                found = match
+                break
+            at = data.find(b"encoding", at + 1, end)
+        if found:
+            names.append(found.group(1))
+            search = found.end()
+            continue
+        if gt < 0:
+            break
+        # Every opener before ``gt - 5`` sees the same declaration body up
+        # to the same ``>``, so it is refused for the same reason.
+        search = max(start + 1, gt - 5)
+    return names
+
+
+def _strip_xml_declarations(text):
+    """``text`` without its ``<?xml ...?>`` declarations.
+
+    Same result as ``re.sub(r"<\\?xml\\s[^>]*?\\?>", "", text)``, in linear
+    time. A declaration ends at the first ``>`` after its opener, and only
+    counts when that ``>`` follows a ``?``.
+    """
+    parts = []
+    size = len(text)
+    kept = 0
+    search = 0
+    gt = -1
+    while True:
+        start = text.find(_XML_DECL_OPEN, search)
+        if start < 0:
+            break
+        if start + 5 >= size or not text[start + 5].isspace():
+            search = start + 1
+            continue
+        if gt < start + 6:
+            gt = text.find(">", start + 6)
+        if gt < 0:
+            # No ``>`` after this opener, so none after any later one either.
+            break
+        if gt >= start + 7 and text[gt - 1] == "?":
+            parts.append(text[kept:start])
+            kept = search = gt + 1
+            continue
+        search = start + 1
+    parts.append(text[kept:])
+    return "".join(parts)
+
+
+def _strip_doctypes(text):
+    """``text`` without its DOCTYPE declarations.
+
+    Same result as ``re.sub(r"<!DOCTYPE[^>\\[]*(\\[[^\\]]*\\])?\\s*>", "", text,
+    flags=re.IGNORECASE)``, in linear time: the next ``>``, ``[`` and ``]``
+    are found once and reused by every opener that shares them.
+    """
+    parts = []
+    size = len(text)
+    kept = 0
+    search = 0
+    next_gt = next_lb = next_rb = -2
+    after_rb = {}
+    while True:
+        opener = _DOCTYPE_OPEN_RE.search(text, search)
+        if not opener:
+            break
+        start, body = opener.start(), opener.end()
+        if next_gt != -1 and next_gt < body:
+            next_gt = text.find(">", body)
+        if next_lb != -1 and next_lb < body:
+            next_lb = text.find("[", body)
+        stops = [pos for pos in (next_gt, next_lb) if pos >= body]
+        if not stops:
+            # Neither ``>`` nor ``[`` follows: no later opener can end either.
+            break
+        stop = min(stops)
+        end = None
+        if text[stop] == ">":
+            end = stop + 1
+        else:
+            if next_rb != -1 and next_rb <= stop:
+                next_rb = text.find("]", stop + 1)
+            if next_rb >= 0:
+                if next_rb not in after_rb:
+                    pos = next_rb + 1
+                    while pos < size and text[pos].isspace():
+                        pos += 1
+                    after_rb[next_rb] = pos
+                pos = after_rb[next_rb]
+                if pos < size and text[pos] == ">":
+                    end = pos + 1
+        if end is None:
+            search = start + 1
+            continue
+        parts.append(text[kept:start])
+        kept = search = end
+    parts.append(text[kept:])
+    return "".join(parts)
+
+
+def _finvoice_roots(xml_bytes, max_bytes=None):
     if isinstance(xml_bytes, str):
         xml_bytes = xml_bytes.encode("utf-8")
-    if not isinstance(xml_bytes, (bytes, bytearray)) or not bytes(xml_bytes).strip():
+    if not isinstance(xml_bytes, (bytes, bytearray)):
+        raise FinvoiceError(UNREADABLE, "The file is empty, not a Finvoice message.")
+    limit = MAX_FILE_BYTES if max_bytes is None else max_bytes
+    if len(xml_bytes) > limit:
+        # Before anything else reads the bytes, so a huge file costs nothing.
+        raise FinvoiceError(
+            UNREADABLE,
+            f"The file is {len(xml_bytes) // 1024} KB, larger than the "
+            f"{limit // 1024} KB a Finvoice file may have here, so it was not read.",
+        )
+    if not bytes(xml_bytes).strip():
         raise FinvoiceError(UNREADABLE, "The file is empty, not a Finvoice message.")
     xml_bytes = bytes(xml_bytes)
     if b"<" not in xml_bytes:
@@ -201,8 +355,8 @@ def _finvoice_roots(xml_bytes):
     # and removed from the decoded text: several of them in one file is exactly
     # the §17 multi-message layout.
     text = _decode(xml_bytes)
-    text = _XML_DECL_RE.sub("", text)
-    text = _DOCTYPE_RE.sub("", text)
+    text = _strip_xml_declarations(text)
+    text = _strip_doctypes(text)
     wrapped = f"<{_WRAPPER}>{text}</{_WRAPPER}>".encode("utf-8")
     try:
         wrapper = etree.fromstring(wrapped, _safe_parser())

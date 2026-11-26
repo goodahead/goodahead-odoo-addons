@@ -108,6 +108,13 @@ way the install does (`migrations/19.0.1.4.0/post-fill-unit-codes.py`).
 - Nothing else; the e-invoicing add-ons built on this base have their own
   settings.
 
+### Limits
+
+The Finvoice reader refuses a file larger than 20 MB before reading it
+(`finvoice.parser.MAX_FILE_BYTES`; a caller may pass a smaller `max_bytes`).
+The receiving add-ons set their own, smaller caps through system parameters;
+see their READMEs.
+
 ## Usage
 
 - The *Buyer Reference* field is on invoices and bills.

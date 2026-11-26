@@ -1,7 +1,10 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+import re
+
 from odoo import _, api, fields, models
+from odoo.tools.sql import escape_psql
 
 from ..lib.import_source import (
     ALL_KEYS,
@@ -18,6 +21,19 @@ from ..lib.import_source import (
 #: The context key the import puts its source's `MatchingPolicy` on, so both
 #: core pipelines and the post-processing read the same one (core/source split).
 MATCHING_POLICY_CONTEXT_KEY = "goodahead_matching_policy"
+
+#: What a printed VAT number (whitespace removed, upper case) may look like to
+#: be searched at all: letters and digits, with the separators some countries
+#: print (``.``, ``-``, ``/``). Deliberately wider than the EU shape, so a US
+#: EIN (``12-3456789``) still matches.
+_VAT_SHAPE = re.compile(r"^[A-Z0-9][A-Z0-9./-]{2,19}$")
+
+
+def like_literal(value):
+    """``value`` for an ``=ilike`` / ``ilike`` domain, its ``%``, ``_`` and
+    ``\\`` taken literally. A value read off a document is a value, never a
+    pattern: a VAT number of ``%`` would otherwise match every partner."""
+    return escape_psql(value or "")
 
 # The three fields an identifier can be derived from. `res.partner.write` is a
 # tree-wide hot path — over a hundred thousand partners on a large database,
@@ -291,8 +307,11 @@ class ResPartner(models.Model):
     def _ai_seller_vat_domain(self, seller):
         """Step 1's domain. ONE body — the matcher and the refusal probe both
         use it, so "what the VAT step looks for" cannot be written twice."""
-        vat = "".join(((seller or {}).get("vat") or "").split()).upper()
-        return [("vat", "=ilike", vat)] if vat else []
+        vat = (seller or {}).get("vat")
+        vat = "".join((vat if isinstance(vat, str) else "").split()).upper()
+        if not vat or not _VAT_SHAPE.match(vat):
+            return []
+        return [("vat", "=ilike", like_literal(vat))]
 
     @api.model
     def _ai_seller_name_domain(self, seller):
@@ -304,7 +323,7 @@ class ResPartner(models.Model):
         name = ((seller or {}).get("name") or "").strip()
         if not name:
             return []
-        return [("name", "=ilike", name), ("parent_id", "=", False)]
+        return [("name", "=ilike", like_literal(name)), ("parent_id", "=", False)]
 
     @api.model
     def _ai_vendor_refusal_for_seller(self, seller, company=None):
@@ -1142,13 +1161,14 @@ class ResPartner(models.Model):
         reading of a PDF, and core's name semantics for those are not ours to
         change.
 
-        ⚠️ ``=ilike`` treats ``%`` and ``_`` in the printed name as wildcards.
-        That is also true of the search-plan core's own name step, so copying
-        it is faithful rather than careless; a vendor name containing either
-        character behaves identically on both builds.
+        🔴 ``%`` and ``_`` in the printed name are taken LITERALLY (security
+        fix). The search-plan core's own name step treats them as wildcards;
+        here that would let a document printing ``%`` match every partner.
+        A vendor name that really contains either character still matches
+        itself exactly.
         """
         return self.env["res.partner"].search(
-            [("name", "=ilike", name)] + list(extra_domain or []), limit=2
+            [("name", "=ilike", like_literal(name))] + list(extra_domain or []), limit=2
         )
 
     @api.model
@@ -1162,7 +1182,7 @@ class ResPartner(models.Model):
         """
         business_id = (business_id or "").strip()
         country_code = (country_code or "").strip()
-        if not business_id or not country_code:
+        if not business_id or not country_code.isascii() or not country_code.isalpha():
             return None
         return [
             ("company_registry", "in", self._registry_variants(business_id)),

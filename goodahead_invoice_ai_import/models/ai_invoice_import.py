@@ -1,15 +1,19 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+import io
 import json
 import logging
+from datetime import timedelta
 
 from markupsafe import Markup
 
 from odoo import _, api, fields, models
+from odoo.tools import email_normalize
+from odoo.tools.pdf import PdfFileReader
 
 from odoo.addons.goodahead_invoice_import.lib.import_source import (
-    DEFAULT_POLICY,
+    AI_POLICY,
     SourceReader,
 )
 
@@ -61,6 +65,203 @@ class GoodaheadInvoiceImport(models.Model):
         )
 
     # ------------------------------------------------------------------
+    # What may start a paid reading (every entry point)
+    # ------------------------------------------------------------------
+    #
+    # 🔴 EVERY READING IS BILLED, AND ANYBODY CAN SEND MAIL. The limits below
+    # are checked where a reading is QUEUED (`_enqueue_import`), so they cover
+    # the mail alias, an upload on a purchase journal and a retry alike. A
+    # refused PDF becomes a failed record that says why, with no job. Each
+    # limit is a system parameter; 0 switches it off.
+
+    @api.model
+    def _ai_int_param(self, key, default):
+        value = self.env["ir.config_parameter"].sudo().get_param(
+            f"goodahead_invoice_ai_import.{key}", str(default)
+        )
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return default
+
+    @api.model
+    def _ai_daily_reads_per_company(self):
+        """Readings one company may queue in 24 hours (default 1000)."""
+        return self._ai_int_param("daily_reads_per_company", 1000)
+
+    @api.model
+    def _ai_daily_reads_per_sender(self):
+        """Readings one sender may queue in 24 hours (default 200): the mail's
+        sender address, or the user who uploaded."""
+        return self._ai_int_param("daily_reads_per_sender", 200)
+
+    @api.model
+    def _ai_max_pdf_pages(self):
+        """Most pages of a PDF sent for reading (default 50)."""
+        return self._ai_int_param("max_pdf_pages", 50)
+
+    @api.model
+    def _ai_recent_read_days(self):
+        """A PDF read in the last this many days is not read again (default 30)."""
+        return self._ai_int_param("recent_read_days", 30)
+
+    @api.model
+    def _ai_sender_key(self, email):
+        return (email_normalize(email or "") or (email or "").strip()).lower()
+
+    @api.model
+    def _ai_budget_refusal(self, company, sender_email=None, uploader=None, exclude=None):
+        """``(code, message)`` when the daily budget of ``company`` or of the
+        sender (``sender_email`` for mail, ``uploader`` for an upload) is spent,
+        else None. Counts readings QUEUED in the last 24 hours.
+
+        ⚠️ Not ``user``: Odoo's ``_()`` reads a local named ``user`` to pick the
+        language, and None there breaks every message below."""
+        since = fields.Datetime.now() - timedelta(days=1)
+        domain = [
+            ("company_id", "=", company.id),
+            ("reader", "=", AI_READER),
+            ("queue_job_id", "!=", False),
+            ("create_date", ">=", since),
+        ]
+        if exclude:
+            domain.append(("id", "not in", exclude.ids))
+        Import = self.sudo().with_context(active_test=False)
+        company_limit = self._ai_daily_reads_per_company()
+        if company_limit and Import.search_count(domain) >= company_limit:
+            return (
+                "ai_import.budget_exceeded",
+                _(
+                    "Not read: %(company)s has used its %(limit)s AI readings for "
+                    "the last 24 hours. Retry it later, or raise the limit "
+                    "(system parameter goodahead_invoice_ai_import."
+                    "daily_reads_per_company).",
+                    company=company.display_name,
+                    limit=company_limit,
+                ),
+            )
+        sender_limit = self._ai_daily_reads_per_sender()
+        if not sender_limit:
+            return None
+        if sender_email:
+            key = self._ai_sender_key(sender_email)
+            used = len(
+                Import.search(domain + [("source", "=", "email")]).filtered(
+                    lambda r: self._ai_sender_key(r.source_email) == key
+                )
+            )
+            who = key
+        elif uploader:
+            used = Import.search_count(domain + [("source", "!=", "email"),
+                                                 ("create_uid", "=", uploader.id)])
+            who = uploader.display_name
+        else:
+            return None
+        if used >= sender_limit:
+            return (
+                "ai_import.budget_exceeded",
+                _(
+                    "Not read: %(who)s has sent %(limit)s PDFs for AI reading in "
+                    "the last 24 hours. Retry it later, or raise the limit "
+                    "(system parameter goodahead_invoice_ai_import."
+                    "daily_reads_per_sender).",
+                    who=who,
+                    limit=sender_limit,
+                ),
+            )
+        return None
+
+    @api.model
+    def _ai_pdf_page_count(self, raw):
+        """Pages of the PDF ``raw``, or None when it cannot be counted (the
+        reading then decides, as before)."""
+        try:
+            return len(PdfFileReader(io.BytesIO(raw), strict=False).pages)
+        except Exception:  # noqa: BLE001 - a broken PDF is not a reason to refuse here
+            return None
+
+    def _ai_admission_refusal(self):
+        """``(code, message)`` when this record's PDF must not be read, else
+        None: too large, too many pages, read recently, or over budget."""
+        self.ensure_one()
+        attachment = self.pdf_attachment_id
+        raw = attachment.raw if attachment else b""
+        if not raw:
+            return None  # the job fails with its own reason
+        max_bytes = self._ai_max_pdf_bytes()
+        if max_bytes and len(raw) > max_bytes:
+            return (
+                "ai_import.attachment_refused",
+                _(
+                    "Not read: the PDF is larger than %(mb)s MB.",
+                    mb=max_bytes // (1024 * 1024) or round(max_bytes / (1024 * 1024), 3),
+                ),
+            )
+        max_pages = self._ai_max_pdf_pages()
+        pages = self._ai_pdf_page_count(raw) if max_pages else None
+        if pages and pages > max_pages:
+            return (
+                "ai_import.too_many_pages",
+                _(
+                    "Not read: the PDF has %(pages)s pages; at most %(limit)s are "
+                    "sent for AI reading.",
+                    pages=pages,
+                    limit=max_pages,
+                ),
+            )
+        days = self._ai_recent_read_days()
+        if days and attachment.checksum:
+            earlier = self.sudo().search(
+                [
+                    ("id", "!=", self.id),
+                    ("company_id", "=", self.company_id.id),
+                    ("reader", "=", AI_READER),
+                    ("extraction_data", "!=", False),
+                    ("pdf_attachment_id.checksum", "=", attachment.checksum),
+                    ("create_date", ">=", fields.Datetime.now() - timedelta(days=days)),
+                ],
+                order="id desc",
+                limit=1,
+            )
+            if earlier:
+                return (
+                    "ai_import.already_read",
+                    _(
+                        "Not read: the same PDF was already read on %(record)s. "
+                        "Open that import instead; it keeps what was read.",
+                        record=earlier.display_name,
+                    ),
+                )
+        if self.source == "email":
+            return self._ai_budget_refusal(
+                self.company_id, sender_email=self.source_email, exclude=self
+            )
+        return self._ai_budget_refusal(
+            self.company_id, uploader=self.create_uid or self.env.user, exclude=self
+        )
+
+    def _import_job_options(self):
+        """🔴 ONE TRY. A worker killed mid-call (Odoo's ``limit_time_real``)
+        commits nothing, and queue_job runs the job again — up to its default
+        of five retries, each another billed request. Retrying a reading is a
+        person's decision (*Retry*)."""
+        options = super()._import_job_options()
+        if self._import_reader() == AI_READER:
+            options["max_retries"] = 1
+        return options
+
+    def _enqueue_import(self, description):
+        """Check the limits of a paid reading before its job is queued."""
+        if self._import_reader() != AI_READER:
+            return super()._enqueue_import(description)
+        refusal = self._ai_admission_refusal()
+        if refusal:
+            code, message = refusal
+            self._fail(code, f"{message} [{code}]")
+            return None
+        return super()._enqueue_import(description)
+
+    # ------------------------------------------------------------------
     # The AI reader in the core's source dispatch
     # ------------------------------------------------------------------
 
@@ -68,7 +269,9 @@ class GoodaheadInvoiceImport(models.Model):
     def _import_readers(self):
         readers = super()._import_readers()
         # Asked last: any structured reader takes a file before the paid one.
-        readers[AI_READER] = SourceReader(AI_READER, priority=100, policy=DEFAULT_POLICY)
+        # 🔴 AI_POLICY, not the default: a bank account printed on a PDF is only
+        # looked up on the vendor; a new one becomes a sensitive suggestion.
+        readers[AI_READER] = SourceReader(AI_READER, priority=100, policy=AI_POLICY)
         return readers
 
     @api.model
@@ -194,6 +397,26 @@ class GoodaheadInvoiceImport(models.Model):
             oversized.extend(skipped)
 
         values = dict(values or {}, reader=AI_READER)
+        budget = pdf_attachments and self._ai_budget_refusal(
+            company, sender_email=values.get("source_email") or msg_dict.get("email_from")
+        )
+        if budget:
+            # Over the budget: ONE failed record for the whole mail and no job,
+            # so a flood of mail cannot become a flood of records either.
+            code, message = budget
+            record = self._create_for_source(
+                "email", company, [],
+                dict(values, name=msg_dict.get("subject") or "Attachment refused"),
+            )
+            record._fail(
+                code,
+                "%s %s [%s]" % (
+                    message,
+                    _("PDFs not read: %s.", ", ".join(name for name, _c in pdf_attachments)),
+                    code,
+                ),
+            )
+            return record
         if not pdf_attachments:
             # Every PDF refused: one failed record that names them (the
             # refused files themselves are not kept, as before).
@@ -263,6 +486,19 @@ class GoodaheadInvoiceImport(models.Model):
         if not self.pdf_attachment_id or not self.pdf_attachment_id.raw:
             self._fail("PDF attachment is missing or empty")
             return "FAILED: No PDF"
+
+        # 🔴 ONE BILLED CALL PER JOB. queue_job requeues a job whose worker
+        # died and counts it in `retry`; the earlier run may well have been
+        # billed. Such a run reads nothing and says so; Retry is a person's call.
+        job = self.sudo().queue_job_id
+        if job and job.retry:
+            message = _(
+                "An earlier run of this reading was interrupted (its worker was "
+                "stopped), so it may already have been billed. It is not read "
+                "again automatically; use Retry."
+            )
+            self._fail("ai_import.interrupted", f"{message} [ai_import.interrupted]")
+            return "FAILED: interrupted earlier"
 
         pdf_bytes = self.pdf_attachment_id.raw
         AccountMove = self.env["account.move"]

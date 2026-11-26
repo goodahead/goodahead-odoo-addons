@@ -33,9 +33,10 @@ from ..lib.import_source import (
     KEY_NAME,
     KEY_PHONE,
     KEY_VAT,
+    MatchingPolicy,
 )
 from ..adapters.ubl_generator import generate_peppol_invoice_xml
-from .res_partner import MATCHING_POLICY_CONTEXT_KEY
+from .res_partner import MATCHING_POLICY_CONTEXT_KEY, like_literal
 
 _logger = logging.getLogger(__name__)
 
@@ -81,6 +82,11 @@ _AI_VENDOR_AUTO_FIELDS = (
     ("email", "email"),
     ("website", "website"),
 )
+
+#: The contact details a document anybody can send must not fill by itself
+#: (`MatchingPolicy.contact_details_need_review`): where the vendor's mail
+#: goes, and what the matcher learns the vendor by.
+_AI_CONTACT_FIELDS = ("phone", "email", "website")
 
 
 class AccountMove(models.Model):
@@ -958,7 +964,9 @@ class AccountMove(models.Model):
         # matches without anybody, and every CONTRADICTION becomes a pending
         # suggestion instead of a write. Nothing here can overwrite anything.
         if invoice.partner_id:
-            invoice._ai_apply_vendor_data(invoice.commercial_partner_id, extracted)
+            invoice._ai_apply_vendor_data(
+                invoice.commercial_partner_id, extracted, automatic=True
+            )
 
         # Apply expense category accounts
         self._apply_expense_categories(invoice, extracted, company)
@@ -2027,7 +2035,7 @@ class AccountMove(models.Model):
             # AI reading's, whose printed names are what F27 was built for.
             # `%` and `_` in the printed name are escaped: they are letters
             # of the name here, not wildcards.
-            exact = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            exact = like_literal(name)
             remember(
                 Partner.search(
                     [("name", "=ilike", exact), ("parent_id", "=", False)], limit=20
@@ -2041,6 +2049,9 @@ class AccountMove(models.Model):
                 _("same name on a contact"),
             )
         elif name and policy is None:
+            # 🔴 `%` and `_` are letters of the printed name, not wildcards
+            # (security fix): a name of `%` must not offer every partner.
+            loose = like_literal(name)
             # A generous cap rather than `limit`: the ranking below decides which
             # three are offered, and a `limit` here would let the database's own
             # ordering decide instead.
@@ -2054,7 +2065,7 @@ class AccountMove(models.Model):
             # the feature was designed around.
             remember(
                 Partner.search(
-                    [("name", "ilike", name), ("parent_id", "=", False)], limit=20
+                    [("name", "ilike", loose), ("parent_id", "=", False)], limit=20
                 ),
                 _("similar name"),
             )
@@ -2099,7 +2110,7 @@ class AccountMove(models.Model):
             # which is precisely the case this search exists for.
             remember(
                 Partner.search(
-                    [("name", "ilike", name), ("parent_id", "!=", False)], limit=20
+                    [("name", "ilike", loose), ("parent_id", "!=", False)], limit=20
                 ).commercial_partner_id,
                 _("similar name on a contact"),
             )
@@ -2194,7 +2205,9 @@ class AccountMove(models.Model):
         rather than a guess: `NJ` is a state in several countries' lists.
         """
         code = (code or "").strip()
-        if not code:
+        if not code or not code.isascii() or not code.isalnum():
+            # A code is letters and digits; anything else (a `%`, a `_`) is
+            # not one, and is never used as a search pattern.
             return None
         if field_name == "country_id":
             return self.env["res.country"].search(
@@ -2231,7 +2244,11 @@ class AccountMove(models.Model):
         if self.env.context.get(MATCHING_POLICY_CONTEXT_KEY):
             return self
         policy = self._ai_import_policy()
-        if policy.is_legacy and not policy.bank_account_lookup_only:
+        if (
+            policy.is_legacy
+            and not policy.bank_account_lookup_only
+            and not policy.contact_details_need_review
+        ):
             return self
         return self.with_context(**{MATCHING_POLICY_CONTEXT_KEY: policy})
 
@@ -2277,8 +2294,18 @@ class AccountMove(models.Model):
                 return data
         return {}
 
-    def _ai_apply_vendor_data(self, partner, extracted, origin=None):
+    def _ai_apply_vendor_data(self, partner, extracted, origin=None, automatic=False):
         """Fill the vendor's EMPTY fields from this invoice; queue the rest.
+
+        🔴 ``automatic`` (the import itself, nobody involved) under a policy
+        whose ``contact_details_need_review`` is set — an AI-read PDF, anything
+        that arrived by email — sends the document's email, phone and website
+        to pending suggestions even when the vendor's field is empty, and
+        learns NO identifiers: a forged document in a real vendor's name must
+        not redirect the vendor's mail or teach the matcher the forger's
+        domain. The identifiers are learned when a person confirms the vendor
+        (the vendor buttons call this without ``automatic``) or posts the bill
+        (`_post`).
 
         Returns a summary dict — ``filled``, ``learned``, ``conflicts``,
         ``withheld`` — which is the SAME object the chatter note is built from
@@ -2317,6 +2344,7 @@ class AccountMove(models.Model):
             return summary
 
         Partner = self.env["res.partner"]
+        review_contacts = automatic and self._ai_contact_details_need_review()
         labels = {
             name: description["string"]
             for name, description in Partner.fields_get(
@@ -2381,6 +2409,21 @@ class AccountMove(models.Model):
                 continue
 
             current = partner[field_name]
+            if not current and review_contacts and field_name in _AI_CONTACT_FIELDS:
+                pending.append(
+                    {
+                        "field_name": field_name,
+                        "field_label": label,
+                        "invoice_value": raw,
+                        "record_value": False,
+                        "note": _(
+                            "Read off a document anybody can send, so it is "
+                            "not filled in by itself. Applying it fills the "
+                            "empty field on the contact."
+                        ),
+                    }
+                )
+                continue
             if not current:
                 to_write[field_name] = raw
                 summary["filled"].append((label, raw))
@@ -2434,7 +2477,8 @@ class AccountMove(models.Model):
             # user data.
             partner.write(to_write)
 
-        summary["learned"] = self._ai_learn_identifiers(partner, seller)
+        if not review_contacts:
+            summary["learned"] = self._ai_learn_identifiers(partner, seller)
         pending.extend(self._ai_sensitive_suggestions(partner, seller, summary))
 
         rows = self.env["goodahead.vendor.data.suggestion"]._replace_pending(
@@ -2446,6 +2490,38 @@ class AccountMove(models.Model):
         ]
         self._ai_post_vendor_data_note(partner, summary, origin=origin)
         return summary
+
+    def _ai_contact_details_need_review(self):
+        """Whether this bill's import keeps the document's contact details
+        for a person (`MatchingPolicy.contact_details_need_review`): the
+        policy on the context, else the one its import ran under."""
+        policy = self.env.context.get(MATCHING_POLICY_CONTEXT_KEY)
+        if not isinstance(policy, MatchingPolicy):
+            policy = self._ai_import_policy() if len(self) == 1 else DEFAULT_POLICY
+        return bool(policy.contact_details_need_review)
+
+    def _post(self, soft=True):
+        """A person posting an imported bill confirms its vendor: learn the
+        document's phone and web domain as that vendor's identifiers now, the
+        half the import itself left for a person (`_ai_apply_vendor_data`)."""
+        posted = super()._post(soft=soft)
+        for move in posted.filtered(
+            lambda m: m.move_type in ("in_invoice", "in_refund") and m.partner_id
+        ):
+            move._ai_learn_identifiers_after_review()
+        return posted
+
+    def _ai_learn_identifiers_after_review(self):
+        self.ensure_one()
+        record = self.env["goodahead.invoice.import"].sudo().search(
+            [("move_id", "=", self.id)], order="id desc", limit=1
+        )
+        if not record or not record._import_reader_policy().contact_details_need_review:
+            return
+        seller = (self._ai_stored_extraction() or {}).get("seller")
+        if not isinstance(seller, dict):
+            return
+        self._ai_learn_identifiers(self.commercial_partner_id, seller)
 
     @api.model
     def _ai_same_contact_value(self, field_name, current, printed):
