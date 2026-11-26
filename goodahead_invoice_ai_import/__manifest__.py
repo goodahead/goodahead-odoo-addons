@@ -11,7 +11,7 @@
     "description": "Reads vendor invoice PDFs with Claude AI and hands the "
     "result to the invoice import core (goodahead_invoice_import). "
     "See README.md.",
-    "version": "18.0.4.2.3",
+    "version": "18.0.4.2.4",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

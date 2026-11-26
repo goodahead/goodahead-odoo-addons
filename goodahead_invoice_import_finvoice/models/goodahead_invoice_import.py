@@ -29,6 +29,13 @@ FINVOICE_READER = "finvoice"
 #: 100), so a mail's Finvoice file and its PDF image stay together.
 FINVOICE_PRIORITY = 10
 
+#: System parameters capping what one file or mail may turn into (0 = off).
+#: Defaults are well above a real bank or operator batch.
+LIMIT_PARAM = "goodahead_invoice_import_finvoice.%s"
+DEFAULT_MAX_MESSAGES_PER_FILE = 500
+DEFAULT_MAX_FILES_PER_EMAIL = 20
+DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024
+
 
 class GoodaheadInvoiceImport(models.Model):
     """The Finvoice source.
@@ -123,6 +130,21 @@ class GoodaheadInvoiceImport(models.Model):
             return super()._source_receive_mail(
                 source_key, files, companions, company, values, msg_dict
             )
+        max_files = self._finvoice_max_files_per_email()
+        if max_files and len(files) > max_files:
+            # Anybody can mail the alias: ONE failed record for the mail, no
+            # job, and the files are not kept.
+            return self._finvoice_refuse(
+                "email", company, values, msg_dict.get("subject") or _("Finvoice email"),
+                "finvoice.too_many_files",
+                _(
+                    "This email carries %(count)s Finvoice files; at most %(limit)s "
+                    "are imported from one email, so none was: %(files)s.",
+                    count=len(files),
+                    limit=max_files,
+                    files=", ".join(name for name, _c, _m in files[:50]),
+                ),
+            )
         stems = {self._finvoice_stem(name): name for name, _c, _m in files}
         paired = {name: [] for name, _c, _m in files}
         for other in companions:
@@ -179,8 +201,22 @@ class GoodaheadInvoiceImport(models.Model):
         """
         values = dict(values or {})
         extra_files = list(extra_files or [])
+        max_bytes = self._finvoice_max_file_bytes()
+        if max_bytes and len(raw or b"") > max_bytes:
+            # Refused before it is read; not stored on the record.
+            return self._finvoice_refuse(
+                source, company, values, filename or "finvoice.xml",
+                "finvoice.too_large",
+                _(
+                    "The Finvoice file %(file)s is %(kb)s KB; files above %(limit)s KB "
+                    "are not imported.",
+                    file=filename,
+                    kb=len(raw) // 1024,
+                    limit=max_bytes // 1024,
+                ),
+            )
         try:
-            messages = finvoice.parse(raw)
+            messages = finvoice.parse(raw, max_bytes=max_bytes or None)
         except finvoice.FinvoiceError as error:
             record = self._finvoice_create_record(
                 source, company, filename, raw, values, extra_files, origin_attachment
@@ -188,9 +224,33 @@ class GoodaheadInvoiceImport(models.Model):
             record._finvoice_fail(error)
             return record
 
+        max_messages = self._finvoice_max_messages_per_file()
+        if max_messages and len(messages) > max_messages:
+            # ONE failed record holding the file as received, and no job.
+            record = self._finvoice_create_record(
+                source, company, filename, raw, values, extra_files, origin_attachment
+            )
+            code = "finvoice.too_many_messages"
+            record._fail(
+                code,
+                "%s [%s]" % (
+                    _(
+                        "The Finvoice file %(file)s holds %(count)s invoices; at most "
+                        "%(limit)s are imported from one file, so none was.",
+                        file=filename,
+                        count=len(messages),
+                        limit=max_messages,
+                    ),
+                    code,
+                ),
+                kind="data",
+            )
+            return record
+
         stem = os.path.splitext(filename or "finvoice")[0] or "finvoice"
         several = len(messages) > 1
         records = self.browse()
+        shared_extras = None
         for message in messages:
             if several:
                 name = f"{stem}-{message.index + 1}.xml"
@@ -200,10 +260,17 @@ class GoodaheadInvoiceImport(models.Model):
                 name = filename or "finvoice.xml"
                 content = raw
                 origin = origin_attachment
+            # The package's other files are stored ONCE, on the first record,
+            # and shared by the others (not one copy per invoice).
             record = self._finvoice_create_record(
-                source, company, name, content, values, extra_files, origin,
+                source, company, name, content, values,
+                extra_files if shared_extras is None else [], origin,
                 main_image=not several,
             )
+            if shared_extras is None:
+                shared_extras = record.finvoice_extra_attachment_ids
+            elif shared_extras:
+                record.finvoice_extra_attachment_ids = [(6, 0, shared_extras.ids)]
             if several:
                 record.message_post(
                     body=Markup("<p>%s</p>")
@@ -248,6 +315,38 @@ class GoodaheadInvoiceImport(models.Model):
                 ],
             }
         )
+        return record
+
+    @api.model
+    def _finvoice_int_param(self, key, default):
+        value = self.env["ir.config_parameter"].sudo().get_param(LIMIT_PARAM % key, str(default))
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return default
+
+    @api.model
+    def _finvoice_max_messages_per_file(self):
+        """Most invoices imported from one Finvoice file (default 500)."""
+        return self._finvoice_int_param("max_messages_per_file", DEFAULT_MAX_MESSAGES_PER_FILE)
+
+    @api.model
+    def _finvoice_max_files_per_email(self):
+        """Most Finvoice files imported from one email (default 20)."""
+        return self._finvoice_int_param("max_files_per_email", DEFAULT_MAX_FILES_PER_EMAIL)
+
+    @api.model
+    def _finvoice_max_file_bytes(self):
+        """Largest Finvoice file imported, in bytes (default 20 MiB)."""
+        return self._finvoice_int_param("max_file_bytes", DEFAULT_MAX_FILE_BYTES)
+
+    @api.model
+    def _finvoice_refuse(self, source, company, values, name, code, message):
+        """One failed record, no files kept, no job."""
+        record = self._create_for_source(
+            source, company, [], dict(values or {}, name=name, reader=FINVOICE_READER)
+        )
+        record._fail(code, f"{message} [{code}]", kind="data")
         return record
 
     @api.model

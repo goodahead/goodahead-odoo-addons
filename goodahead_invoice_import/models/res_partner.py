@@ -1,6 +1,9 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+import re
+
 from odoo import _, api, fields, models
+from odoo.tools.sql import escape_psql
 
 from ..lib.import_source import (
     ALL_KEYS,
@@ -17,6 +20,19 @@ from ..lib.import_source import (
 #: The context key the import puts its source's `MatchingPolicy` on, so both
 #: core pipelines and the post-processing read the same one.
 MATCHING_POLICY_CONTEXT_KEY = "goodahead_matching_policy"
+
+#: What a printed VAT number (whitespace removed, upper case) may look like to
+#: be searched at all: letters and digits, with the separators some countries
+#: print (``.``, ``-``, ``/``). Deliberately wider than the EU shape, so a US
+#: EIN (``12-3456789``) still matches.
+_VAT_SHAPE = re.compile(r"^[A-Z0-9][A-Z0-9./-]{2,19}$")
+
+
+def like_literal(value):
+    """``value`` for an ``=ilike`` / ``ilike`` domain, its ``%``, ``_`` and
+    ``\\`` taken literally. A value read off a document is a value, never a
+    pattern: a VAT number of ``%`` would otherwise match every partner."""
+    return escape_psql(value or "")
 
 # The fields an identifier can be derived from. `res.partner.write` is a hot
 # path, so the override below does nothing unless one of these keys is in vals.
@@ -141,8 +157,11 @@ class ResPartner(models.Model):
     @api.model
     def _ai_seller_vat_domain(self, seller):
         """Domain of the VAT step, shared by the matcher and the refusal probe."""
-        vat = "".join(((seller or {}).get("vat") or "").split()).upper()
-        return [("vat", "=ilike", vat)] if vat else []
+        vat = (seller or {}).get("vat")
+        vat = "".join((vat if isinstance(vat, str) else "").split()).upper()
+        if not vat or not _VAT_SHAPE.match(vat):
+            return []
+        return [("vat", "=ilike", like_literal(vat))]
 
     @api.model
     def _ai_seller_name_domain(self, seller):
@@ -154,7 +173,7 @@ class ResPartner(models.Model):
         name = ((seller or {}).get("name") or "").strip()
         if not name:
             return []
-        return [("name", "=ilike", name), ("parent_id", "=", False)]
+        return [("name", "=ilike", like_literal(name)), ("parent_id", "=", False)]
 
     @api.model
     def _ai_vendor_refusal_for_seller(self, seller, company=None):
@@ -572,10 +591,12 @@ class ResPartner(models.Model):
         silently. AI decodes use an exact case-insensitive match instead;
         substring look-alikes are still offered as candidates on the bill.
         ``limit=2`` and ``extra_domain`` stay as core's, since the caller
-        accepts only a single result.
+        accepts only a single result. ``%`` and ``_`` in the printed name are
+        taken literally (security fix): a document printing ``%`` must not
+        match every partner.
         """
         return self.env["res.partner"].search(
-            [("name", "=ilike", name)] + list(extra_domain or []), limit=2
+            [("name", "=ilike", like_literal(name))] + list(extra_domain or []), limit=2
         )
 
     @api.model
@@ -587,7 +608,7 @@ class ResPartner(models.Model):
         """
         business_id = (business_id or "").strip()
         country_code = (country_code or "").strip()
-        if not business_id or not country_code:
+        if not business_id or not country_code.isascii() or not country_code.isalpha():
             return None
         return [
             ("company_registry", "in", self._registry_variants(business_id)),

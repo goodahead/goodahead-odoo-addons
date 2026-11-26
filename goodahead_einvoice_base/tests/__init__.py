@@ -1,6 +1,7 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+from . import test_finvoice_parser_limits
 from . import test_finvoice_reader
 from . import test_finvoice_references
 from . import test_finvoice_rows

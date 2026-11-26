@@ -20,8 +20,17 @@ the core. The core then does the same for every source:
   difference (address, bank account, VAT number) becomes a vendor data
   suggestion to review. Bank account and VAT number suggestions are never
   pre-selected.
-- **Bank-account checks.** An IBAN that belongs to another partner is not
-  attached; the chatter names its owner.
+- **Contact details from documents anybody can send.** For a PDF read by AI,
+  and for any document that arrived by email, the document's email, phone and
+  website never fill the vendor's empty fields by themselves; they wait as
+  suggestions. Its phone and web domain are learned for vendor matching only
+  when a person confirms the vendor (picks a candidate, creates the contact)
+  or posts the bill.
+- **Bank-account checks.** A bank account printed on an AI-read PDF or a
+  structured e-invoice is never created on the vendor: an account the vendor
+  already holds is used, a new one waits as a vendor data suggestion. An IBAN
+  that belongs to another partner is not attached; the chatter names its
+  owner.
 - **Duplicate rule.** A bill or credit note of the same kind, not cancelled,
   in the same company, from the same vendor company (or, with no vendor
   matched, the same seller VAT number or Business ID) with the same invoice

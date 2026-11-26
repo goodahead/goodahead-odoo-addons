@@ -155,7 +155,11 @@ class TestCreditMemoBank(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_credit_note_records_the_iban_on_the_vendor(self):
-        """The supplier's account goes on the supplier, and never on us."""
+        """The supplier's account goes on the supplier, and never on us.
+
+        Since the AI reader looks bank accounts up only (security fix), "goes
+        on the supplier" means: it waits for a person as a sensitive
+        suggestion on the supplier; nothing is created from the PDF."""
         move = self._import(self._extracted())
 
         self.assertEqual(move.move_type, "in_refund")
@@ -163,13 +167,21 @@ class TestCreditMemoBank(TransactionCase):
             self._company_banks(),
             "the vendor's IBAN must not be attached to the company partner",
         )
-        vendor_bank = self.Bank.search(
-            [("sanitized_acc_number", "=", VENDOR_IBAN), ("partner_id", "=", self.vendor.id)]
+        self.assertFalse(
+            self.Bank.with_context(active_test=False).search(
+                [("sanitized_acc_number", "=", VENDOR_IBAN)]
+            ),
+            "no bank account is created from a PDF",
         )
-        self.assertTrue(vendor_bank, "the vendor's IBAN belongs on the vendor")
-        self.assertNotEqual(
-            move.partner_bank_id,
-            vendor_bank,
+        suggestion = self.env["goodahead.vendor.data.suggestion"].search(
+            [("move_id", "=", move.id), ("field_name", "=", "bank_account"),
+             ("state", "=", "pending")]
+        )
+        self.assertEqual(suggestion.partner_id, self.vendor,
+                         "the vendor's IBAN is suggested for the vendor")
+        self.assertEqual(suggestion.invoice_value, VENDOR_IBAN)
+        self.assertFalse(
+            move.partner_bank_id.sanitized_acc_number == VENDOR_IBAN,
             "a credit note is refunded into our account, not the vendor's",
         )
 
@@ -217,7 +229,11 @@ class TestCreditMemoBank(TransactionCase):
         )
 
     def test_bill_still_states_the_vendor_account(self):
-        """On an ordinary bill the vendor's account is stated."""
+        """On an ordinary bill the vendor's account is stated.
+
+        The vendor holds the account already: since the security fix an AI
+        reading only looks a bank account up on the vendor."""
+        self.Bank.create({"acc_number": VENDOR_IBAN, "partner_id": self.vendor.id})
         move = self._import(self._extracted(doc_type="Invoice"))
 
         self.assertEqual(move.move_type, "in_invoice")
@@ -233,10 +249,14 @@ class TestCreditMemoBank(TransactionCase):
 
         The number check applies only when the company is the payee; on a bill
         ownership alone decides.
+
+        The vendor's own row exists before the import: since the security fix
+        an AI reading only looks a bank account up on the vendor.
         """
         self.Bank.create(
             {"acc_number": VENDOR_IBAN, "partner_id": self.company.partner_id.id}
         )
+        self.Bank.create({"acc_number": VENDOR_IBAN, "partner_id": self.vendor.id})
 
         move = self._import(self._extracted(doc_type="Invoice"))
 

@@ -8,6 +8,30 @@ that was installed at that version.
 
 ---
 
+18.0.1.12.5 — security fixes.
+
+### Security
+
+- New matching policy `AI_POLICY` for the AI reading of a PDF: vendors are
+  matched as before, but a bank account printed on the document is only
+  looked up on the vendor and never created; a new one waits for a person as
+  a sensitive vendor data suggestion.
+- For a PDF read by AI and for any document that arrived by email, the
+  document's email, phone and website no longer fill the vendor's empty
+  fields by themselves (they become suggestions; applying one fills the
+  field), and its phone and web domain are learned for matching only when a
+  person confirms the vendor or posts the bill
+  (`MatchingPolicy.contact_details_need_review`).
+- A seller's VAT number, name or country code read off a document is searched
+  as a literal value: `%` and `_` no longer act as wildcards. A VAT number is
+  searched only when it looks like one (letters, digits and `.`, `-`, `/`,
+  3 to 20 characters).
+- New hook `_import_job_options` lets a source set the options of its import
+  job (the AI reading limits its retries to one).
+- Upgrade: `-u goodahead_invoice_import`.
+
+---
+
 18.0.1.12.4 — release clean-up: no functional change.
 
 - Credit for the willwhite/freemail list (ISC) in the code and the README; comments no longer name an unpublished add-on; README gains a Usage section.

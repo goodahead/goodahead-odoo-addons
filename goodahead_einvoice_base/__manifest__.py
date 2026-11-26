@@ -8,7 +8,7 @@
     "description": "The Finvoice 3.0 schema, the pure-Python Finvoice library, "
     "the UN/ECE Rec 20 unit codes and the systray attention bubble shared by "
     "receiving and sending e-invoices. See README.md.",
-    "version": "18.0.1.9.3",
+    "version": "18.0.1.9.4",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

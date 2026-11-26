@@ -4,6 +4,23 @@ Newest first.
 
 ---
 
+18.0.1.4.2 — security fixes.
+
+### Security
+
+- The client's methods (`messages_create`, `extract_text`, `extract_usage`,
+  `test_connection`, `sync_models`) can no longer be called over RPC; they are
+  for server code only. Test Connection and Sync Models need an administrator.
+- The output-token limit and the timeout of a request are capped on the
+  server (system parameters `goodahead_claude.max_output_tokens_ceiling`,
+  default 64000, and `goodahead_claude.timeout_ceiling`, default 300 s).
+- With worker processes, a request's timeout stays 15 s below Odoo's
+  `limit_time_real`, so a slow request ends before its worker is stopped.
+- Neutralizing a database copy clears every company's Claude API key.
+- Upgrade: `-u goodahead_claude`.
+
+---
+
 18.0.1.4.1 — release clean-up: no functional change.
 
 - README added; the changelog rewritten in the release format; the manifest

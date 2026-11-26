@@ -40,6 +40,7 @@ class ResConfigSettings(models.TransientModel):
         self.ensure_one()
         if not self.claude_api_key:
             raise UserError(_("Please configure the Claude API key first."))
+        self.env["goodahead.claude.client"]._check_claude_admin()
         try:
             result = self.env["goodahead.claude.client"]._sync_models(
                 company=self.company_id

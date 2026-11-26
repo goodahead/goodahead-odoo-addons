@@ -24,6 +24,7 @@ from odoo.tests import TransactionCase, new_test_user, tagged
 from odoo.tools.safe_eval import safe_eval
 
 from odoo.addons.goodahead_invoice_import.lib.import_source import (
+    AI_POLICY,
     DEFAULT_POLICY,
     STRICT_POLICY,
     SourceReader,
@@ -506,11 +507,14 @@ class TestInboxScreens(ScreenHelpers, TransactionCase):
         vat = "FI90001416"
         established, other = self._shared_vat_vendors(vat)
         bill = self._imported_bill("ZZ Brand New Seller Oy", vat)
-        self.assertIs(bill._ai_import_policy(), DEFAULT_POLICY)
+        # The default policy, or the AI reader's when that add-on is installed:
+        # both match vendors exactly as before (the AI one only looks bank
+        # accounts up, a security fix).
+        self.assertIn(bill._ai_import_policy(), (DEFAULT_POLICY, AI_POLICY))
         self.assertEqual(bill._ai_with_import_policy(), bill)
-        self.assertFalse(
-            bill._ai_with_import_policy().env.context.get(MATCHING_POLICY_CONTEXT_KEY)
-        )
+        on_context = bill._ai_with_import_policy().env.context.get(MATCHING_POLICY_CONTEXT_KEY)
+        self.assertIn(on_context, (None, False, AI_POLICY))
+        self.assertTrue((on_context or DEFAULT_POLICY).is_legacy)
         expected = self.env["res.partner"]._ai_find_vendor(
             invoice_data(vat=vat)["seller"], company=bill.company_id
         )

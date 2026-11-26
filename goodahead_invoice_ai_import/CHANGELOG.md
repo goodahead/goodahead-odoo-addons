@@ -7,6 +7,30 @@ says otherwise.
 
 ---
 
+18.0.4.2.4 — security fixes.
+
+### Security
+
+- A bank account printed on a PDF is no longer added to the vendor by the
+  import. An account the vendor already holds is used; a new one waits for a
+  person as a sensitive vendor data suggestion.
+- The email, phone and website printed on a PDF no longer fill the vendor's
+  empty fields by themselves; they become suggestions. The PDF's phone and
+  web domain are learned for vendor matching only when a person picks or
+  creates the vendor, or posts the bill.
+- Paid readings are limited wherever they are queued (mail, upload, retry):
+  a daily budget per company (1000) and per sender or uploading user (200),
+  a page limit (50), the existing size limit now also on uploads, and a PDF
+  already read in the last 30 days is not read again. A refused PDF becomes
+  a failed record with the reason and no job. All are system parameters; see
+  the README.
+- A reading job is tried once: queue_job does not retry it, and a run that
+  follows an interrupted one (a stopped worker) reads nothing and fails with
+  a reason, so one PDF is billed at most once per Retry.
+- Upgrade: `-u goodahead_invoice_ai_import`.
+
+---
+
 18.0.4.2.3 — release clean-up: no functional change.
 
 - Tests no longer name an approval add-on; the freight-bill test fixture uses different invented figures (same shape, still adds up).

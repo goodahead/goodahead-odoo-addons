@@ -17,7 +17,7 @@ from unittest.mock import patch
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_import.lib.import_source import (
-    DEFAULT_POLICY,
+    AI_POLICY,
     STRICT_POLICY,
 )
 from odoo.addons.goodahead_invoice_import.tests.common import ensure_purchase_journal
@@ -90,7 +90,8 @@ class TestSourceDispatch(TransactionCase):
         self.assertIs(readers["finvoice"].policy, STRICT_POLICY)
         self.assertTrue(readers["finvoice"].structured)
         if self.ai:
-            self.assertIs(readers["ai"].policy, DEFAULT_POLICY)
+            # The AI reading looks bank accounts up only (security fix).
+            self.assertIs(readers["ai"].policy, AI_POLICY)
             self.assertFalse(readers["ai"].structured)
 
     # -- mail: the core routes, whatever the load order -------------------------

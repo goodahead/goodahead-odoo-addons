@@ -4,6 +4,18 @@ Newest first.
 
 ---
 
+18.0.1.9.4 — security fix.
+
+### Security
+
+- The Finvoice reader refuses a file larger than 20 MB before reading it, and
+  finds XML declarations and DOCTYPEs with linear scans instead of regular
+  expressions whose running time grew with the square of the file size, so a
+  crafted file can no longer hold a worker for a long time.
+- Upgrade: `-u goodahead_einvoice_base`.
+
+---
+
 18.0.1.9.3 — release clean-up: invented test data, no functional change.
 
 - Comments, docstrings and tests no longer carry data from real documents

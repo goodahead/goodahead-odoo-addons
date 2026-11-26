@@ -8,5 +8,6 @@ try:  # the source tests need the ERP; the library tests run without it
 except ImportError:  # pragma: no cover
     pass
 else:
+    from . import test_finvoice_intake_limits
     from . import test_finvoice_source
     from . import test_source_dispatch

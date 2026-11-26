@@ -6,7 +6,7 @@
     "description": "Shared Claude API client for Goodahead add-ons: per-company API key, "
     "default model and output limit, a model catalogue synced from the API, and "
     "messages_create() for other add-ons. See README.md.",
-    "version": "18.0.1.4.1",
+    "version": "18.0.1.4.2",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

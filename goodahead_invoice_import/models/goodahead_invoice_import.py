@@ -1,6 +1,7 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+import dataclasses
 import json
 import logging
 
@@ -341,9 +342,15 @@ class GoodaheadInvoiceImport(models.Model):
             description=description,
             identity_key=lifecycle.identity_key(self.id),
             channel=AI_IMPORT_CHANNEL,
+            **self._import_job_options(),
         )._process_import()
         self._link_job(job)
         return job
+
+    def _import_job_options(self):
+        """Extra `with_delay` options of this record's import job. A source
+        whose reading is billed limits its retries here."""
+        return {}
 
     def _link_job(self, job):
         """Point `queue_job_id` at ``job`` — a queue_job `Job`, or the
@@ -919,7 +926,12 @@ class GoodaheadInvoiceImport(models.Model):
         imported AND re-imported under. The default policy for a
         record no reader claims."""
         spec = self._import_reader_spec()
-        return spec.policy if spec else DEFAULT_POLICY
+        policy = spec.policy if spec else DEFAULT_POLICY
+        if self.source == "email" and not policy.contact_details_need_review:
+            # Anybody can send mail: the contact details of a mailed document
+            # wait for a person whatever its format (security fix).
+            policy = dataclasses.replace(policy, contact_details_need_review=True)
+        return policy
 
     # ------------------------------------------------------------------
     # Mail intake: one door, the readers asked in priority order
@@ -1594,7 +1606,15 @@ class GoodaheadInvoiceImport(models.Model):
         company = self.company_id
         AccountMove = self.env["account.move"]
         policy = policy or DEFAULT_POLICY
-        if not policy.is_legacy or policy.bank_account_lookup_only:
+        if self.source == "email" and not policy.contact_details_need_review:
+            # A source that passes its reader's policy explicitly gets the
+            # mail rule too (see `_import_reader_policy`).
+            policy = dataclasses.replace(policy, contact_details_need_review=True)
+        if (
+            not policy.is_legacy
+            or policy.bank_account_lookup_only
+            or policy.contact_details_need_review
+        ):
             # Both core pipelines, `res.partner.bank` and the post-processing
             # read it from here; the default policy puts nothing on the
             # context, so the AI path runs exactly as it did.

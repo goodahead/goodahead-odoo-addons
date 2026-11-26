@@ -7,6 +7,22 @@ version.
 
 ---
 
+18.0.1.6.3 — security fixes.
+
+### Security
+
+- Caps on what one file or email may become: invoices per Finvoice file
+  (500), Finvoice files per email (20) and bytes per file (20 MiB), all system
+  parameters. Over a cap the file or email becomes one failed import record
+  with the reason, and no job.
+- The files that come with a multi-invoice file are stored once and shared
+  by its records, instead of one copy per invoice.
+- For a file that arrived by email, the seller's email, phone and website
+  wait for a person as suggestions (from `goodahead_invoice_import`).
+- Upgrade: `-u goodahead_invoice_import_finvoice`.
+
+---
+
 18.0.1.6.2 — release clean-up: no functional change.
 
 - README: Install and Usage sections.
