@@ -1,20 +1,20 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
-# Dependency-free; declares which core import pipeline this build runs.
-from . import core_profile
+
+# Before `res_company`, which points at it.
 from . import prompt_profile
 from . import res_company
 from . import res_config_settings
-from . import expense_category
-from . import account_edi_common
-from . import account_edi_ubl
-# Before `res_partner`, which declares a One2many onto it.
-from . import partner_identifier
-from . import res_partner
-from . import product_product
-# Before `account_move`, which declares a One2many onto each of them.
-from . import vendor_candidate
-from . import vendor_data_suggestion
+
+# `claude_model` is gone: `goodahead.claude.model` is declared by
+# `goodahead_claude`, which this module now depends on. Declaring it twice gave
+# the two copies different `_order` and a different field set — and this
+# module's copy had no `created_at`, the field the newest-model resolution
+# depends on.
+#
+# The generic models (vendor matching, identifiers, candidates, suggestions,
+# expense categories, the core profile, the import record itself) live in
+# `goodahead_invoice_import` since the core/source split; this module extends what it reads.
 from . import account_move
 from . import account_journal
 from . import ai_invoice_import

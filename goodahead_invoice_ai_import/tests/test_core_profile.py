@@ -1,23 +1,54 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Detection of which core import pipeline this module is running on.
+"""Which core pipeline is this module running on, and can the question be answered wrong?
 
-Two Odoo 19.0 builds import vendor bills through different pipelines, and this
-module hooks both. A plain `hasattr` check is useless because this module
-itself defines the methods being probed, and some core methods exist on both
-builds but are dead stubs on one.
+🔴 THE QUESTION THIS FILE ANSWERS. Two Odoo 19.0 builds, seven months apart,
+import a vendor bill through two different pipelines. This module hooks both.
+So it has to know which one it is on — and the obvious way of asking is
+worthless:
 
-Two things are tested:
+    hasattr(self.env['account.edi.ubl'], '_import_ubl_retrieve_customer_search_plan')
 
-1. `core_defines_in_mro` can return False when only our own class defines a
-   name.
-2. `classify_core_profile` can return all three answers (`search_plan`,
-   `legacy`, `unknown`) on fixture cores.
+is True on BOTH builds the moment this module is installed, because this module
+defines that method. A probe that cannot say no is not a probe.
 
-The live-build tests assert the rule (exactly one known profile, recorded and
-acted on), not which profile a given build is; that is asserted by the gated
-classes in `test_legacy_name_slot`.
+Sharper still, and the reason a name test answers the wrong question twice:
+`_retrieve_partner` and `_retrieve_partner_with_name` exist in BOTH 19.0 builds.
+On the search-plan core `_retrieve_partner_with_name` is a deprecated stub with
+zero core callers. So the presence of a method proves nothing about whether
+anything calls it.
+
+Hence two things are tested here and they are not the same thing:
+
+1. `core_defines_in_mro` — can it return **False** when only our own class
+   defines the name? `test_only_our_module_defines_it_is_not_core` is the whole
+   value of the probe; without it every other assertion below is decorative.
+2. `classify_core_profile` — can it return all **three** answers? The fixture
+   cores at the top of this file produce `search_plan`, `legacy` and `unknown`,
+   so the classifier is shown to be capable of refusing, not only of agreeing.
+
+⚠️ `unknown` is fixture-only, and always will be: a build that matches neither
+profile is by definition one nobody has. `search_plan` and `legacy` are each
+measured against a real core — the US bench and the legacy bench respectively.
+
+🔴 WHAT CHANGED IN 19.0.3.7.0, AND WHY IT IS THE POINT OF THE WHOLE FILE.
+`TestCoreProfileOnThisBuild` used to assert `search_plan` BY NAME, five times.
+That is a bench-is-the-bench guard that is wrong on the other bench by
+construction: run it on the legacy build and five tests fail, every one of them
+saying "this is not the build I was written on" rather than "this build is
+broken". A guard that can only pass on one of the two things it exists to tell
+apart has stopped being a guard.
+
+So these tests now assert the RULE: the live build matches exactly one of the
+two known profiles, that profile is what got recorded, that recording is what
+the refusal path reads, and that profile is what the INFO line names. Every one
+of them can still fail — on a build matching both profiles, on a build matching
+neither, on a recorded value that disagrees with a live re-detection, or on a
+probe that answers from our own classes. WHICH profile each bench is remains
+asserted, but at its own seam: `test_legacy_name_slot`'s two gated classes, one
+per profile, which is also what keeps the two benches from being one bench run
+twice (the dual-core design).
 """
 
 import logging
@@ -27,7 +58,7 @@ from odoo.exceptions import UserError
 from odoo.tests import BaseCase, TransactionCase, tagged
 
 from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     CORE_PROFILE_PARAM,
     OUR_MODULE,
     PROFILE_LEGACY,
@@ -42,7 +73,7 @@ from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
 # this module — defines on that build.
 # ---------------------------------------------------------------------------
 
-# Newer 19.0 build (search-plan pipeline).
+# The search-plan core, odoo/odoo 189df353 (2026-06-23).
 SEARCH_PLAN_CORE = {
     ("account.edi.ubl", "_ubl_import_invoice"),
     ("account.edi.ubl", "_import_ubl_retrieve_customer_search_plan"),
@@ -50,9 +81,9 @@ SEARCH_PLAN_CORE = {
     ("res.partner", "_import_retrieve_customer"),
     ("res.partner", "_import_retrieve_customer_from_name"),
     ("product.product", "_import_retrieve_product_from_supplierinfo"),
-    ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan"),
-    # It also has every name the legacy profile checks, so a profile built
-    # only from "is this name present" would match `legacy` too.
+    # 🔴 It ALSO has every name the legacy profile asserts. That is not padding
+    # — it is the trap. A profile built only out of "is this name present"
+    # would match `legacy` here too.
     ("account.edi.common", "_import_partner"),
     ("account.edi.common", "_import_lines"),
     ("account.edi.common", "_import_product"),
@@ -60,14 +91,7 @@ SEARCH_PLAN_CORE = {
     ("res.partner", "_retrieve_partner_with_name"),
 }
 
-# 19.0 from core 5baa557 (2026-09-01) on: the product plan has moved to
-# `account.edi.common` (seen through `account.edi.ubl`, which inherits it).
-SEARCH_PLAN_MOVED_PRODUCTS_CORE = (
-    SEARCH_PLAN_CORE
-    - {("account.edi.ubl", "_import_ubl_retrieve_products_search_plan")}
-) | {("account.edi.ubl", "_import_retrieve_products_search_plan")}
-
-# Older 19.0 build (legacy pipeline).
+# Legacy core: odoo/odoo ca1f0aea (2026-01-17) / 19.0 nightly deb 20260118.
 LEGACY_CORE = {
     ("account.edi.common", "_import_partner"),
     ("account.edi.common", "_import_lines"),
@@ -76,7 +100,8 @@ LEGACY_CORE = {
     ("res.partner", "_retrieve_partner_with_name"),
 }
 
-# A 17.0-shaped core: a pipeline this module must refuse rather than guess at.
+# A third deployment's 17.0 core (the dual-core design) — a real third pipeline, kept here as the shape of
+# a build this module must refuse rather than guess at.
 NEITHER_CORE = {
     ("res.partner", "_retrieve_partner"),
     ("product.product", "_retrieve_product"),
@@ -89,10 +114,16 @@ def probe_for(core):
 
 
 def unknown_core_probe(move):
-    """Patch the live probe on `account.move` so detection answers `unknown`.
+    """Patch the LIVE probe on `account.move` so the detection answers `unknown`.
 
-    The refusal reads the live registry, not the stored parameter, so the
-    probe itself is patched.
+    🔴 WHY THIS REPLACED "SET THE PARAMETER TO `unknown`" (found in review).
+    The refusal reads the live registry now, not the stored parameter, because
+    the write that fills that parameter is documented as allowed to fail. A test
+    that forced the refusal by writing `unknown` into `ir.config_parameter` was
+    therefore driving a proxy that no longer decides anything, and would pass on
+    a build whose registry is perfectly recognisable. Patching `_ai_core_defines`
+    puts a genuinely unrecognisable core underneath the whole chain instead,
+    which is the condition the refusal exists for.
     """
     return patch.object(
         type(move),
@@ -122,7 +153,11 @@ class TestCoreDefinesMro(BaseCase):
     """The MRO walk. No database, no registry — these are the rules themselves."""
 
     def test_only_our_module_defines_it_is_not_core(self):
-        """A name defined only by this module's class is not core's."""
+        """🔴 THE test. Without it the whole check is decorative.
+
+        This is the exact situation on a legacy core once this module is installed: the
+        name is on the model, and the only class that put it there is ours.
+        """
         mro = mro_of(
             _FakeClass(OUR_MODULE + ".models.account_edi_ubl", ["_import_ubl_create_missing_customer"]),
             _FakeClass("odoo.addons.account_edi_ubl_cii.models.account_edi_ubl", ["_export_invoice"]),
@@ -151,11 +186,18 @@ class TestCoreDefinesMro(BaseCase):
         self.assertFalse(core_defines_in_mro(mro, "_ubl_import_invoice"))
 
     def test_in_module_separates_a_parent_models_definition_from_a_childs(self):
-        """The `in_module` argument tells which file defines a method.
+        """🔴 THE FIXTURE THAT PROVES THE SUBSTITUTE-PDF PROBE CAN FAIL.
 
         `_inherit` puts `account.edi.common`'s classes into `account.edi.ubl`'s
-        MRO, so only the defining module separates the two builds for
-        `_import_attachments` (used by `_ai_core_reads_substitute_pdf_param`).
+        MRO, so BOTH builds answer True to "somebody outside this module defines
+        `_import_attachments`". The only question that separates them is which
+        FILE defines it — the substitute-PDF override lives in
+        `account_edi_ubl_cii/models/account_edi_ubl.py` on one core and does not
+        exist on the other.
+
+        So: the unqualified walk must say True here and the qualified one must
+        say False. Without this pair the gate in
+        `_ai_core_reads_substitute_pdf_param` is decorative.
         """
         legacy_like = mro_of(
             _FakeClass(
@@ -189,7 +231,9 @@ class TestCoreDefinesMro(BaseCase):
         )
 
     def test_in_module_is_matched_exactly_and_not_by_prefix(self):
-        """`in_module` is matched exactly, not as a prefix."""
+        """A prefix match would let somebody else's `…account_edi_ubl_extra`
+        satisfy a marker written for `…account_edi_ubl`, i.e. report a
+        capability on a build nobody has measured."""
         mro = mro_of(
             _FakeClass(
                 "odoo.addons.account_edi_ubl_cii.models.account_edi_ubl_extra",
@@ -205,8 +249,8 @@ class TestCoreDefinesMro(BaseCase):
         )
 
     def test_our_own_class_never_satisfies_in_module(self):
-        """A name this module defines never counts as core, even with
-        `in_module`."""
+        """And the original rule still holds with the narrowing applied: a name
+        this module put there proves nothing about core."""
         mro = mro_of(
             _FakeClass(
                 OUR_MODULE + ".models.account_edi_ubl",
@@ -222,8 +266,11 @@ class TestCoreDefinesMro(BaseCase):
         )
 
     def test_a_module_whose_name_merely_starts_with_ours_is_not_ours(self):
-        """`goodahead_invoice_ai_import_extra` is somebody else's module, not
-        ours.
+        """`goodahead_invoice_ai_import_extra` is somebody else's module.
+
+        A bare `startswith(OUR_MODULE)` would swallow it and report "we defined
+        this", which is the failure in the safe-looking direction: the probe
+        would under-report core and fall to `unknown`.
         """
         mro = mro_of(
             _FakeClass(
@@ -242,53 +289,42 @@ class TestProfileClassification(BaseCase):
         profile, _failures = classify_core_profile(probe_for(SEARCH_PLAN_CORE))
         self.assertEqual(profile, PROFILE_SEARCH_PLAN)
 
-    def test_a_search_plan_core_with_the_moved_product_plan_is_recognised(self):
-        profile, _failures = classify_core_profile(
-            probe_for(SEARCH_PLAN_MOVED_PRODUCTS_CORE)
-        )
-        self.assertEqual(profile, PROFILE_SEARCH_PLAN)
-
-    def test_a_search_plan_core_without_any_product_plan_is_unknown(self):
-        """The narrowing would be a silent no-op, so the core is refused."""
-        core = SEARCH_PLAN_CORE - {
-            ("account.edi.ubl", "_import_ubl_retrieve_products_search_plan")
-        }
-        profile, failures = classify_core_profile(probe_for(core))
-        self.assertEqual(profile, PROFILE_UNKNOWN)
-        self.assertTrue(
-            any(
-                "_import_retrieve_products_search_plan" in failure
-                for failure in failures[PROFILE_SEARCH_PLAN]
-            )
-        )
-
     def test_a_legacy_core_is_recognised(self):
         profile, _failures = classify_core_profile(probe_for(LEGACY_CORE))
         self.assertEqual(profile, PROFILE_LEGACY)
 
     def test_an_unrecognised_core_is_unknown(self):
-        """An unrecognised core is `unknown`, with failures listed per
-        profile."""
+        """🔴 The probe can say no. A third deployment's 17.0 shape is the fixture."""
         profile, failures = classify_core_profile(probe_for(NEITHER_CORE))
         self.assertEqual(profile, PROFILE_UNKNOWN)
-        # The failures name what was expected, for the ERROR log.
+        # And it says WHY, per profile — the ERROR log is only useful if it names
+        # what was expected.
         self.assertTrue(failures[PROFILE_SEARCH_PLAN])
         self.assertTrue(failures[PROFILE_LEGACY])
 
     def test_a_search_plan_core_is_not_also_legacy(self):
-        """`legacy` requires the search-plan entry point to be absent, so a
-        search-plan core does not also match it."""
+        """The two profiles are mutually exclusive on the discriminator.
+
+        A search-plan core carries every name the legacy profile asserts (see
+        SEARCH_PLAN_CORE above), so this only passes because `legacy` asserts
+        the search-plan ENTRY POINT is absent, not merely that some names exist.
+        """
         _profile, failures = classify_core_profile(probe_for(SEARCH_PLAN_CORE))
         self.assertTrue(failures[PROFILE_LEGACY])
 
     def test_removing_only_the_discriminator_stops_search_plan_matching(self):
-        """Without `_ubl_import_invoice` the core is no longer search-plan."""
+        """Take `_ubl_import_invoice` away and the search-plan answer collapses.
+
+        It collapses to `legacy` rather than to `unknown`, because what is left
+        IS the legacy shape — which is the whole claim the discriminator makes.
+        """
         core = SEARCH_PLAN_CORE - {("account.edi.ubl", "_ubl_import_invoice")}
         profile, _failures = classify_core_profile(probe_for(core))
         self.assertNotEqual(profile, PROFILE_SEARCH_PLAN)
 
     def test_two_matching_profiles_is_unknown(self):
-        """A core matching two profiles is `unknown`."""
+        """A core that answers to two profiles is a state nobody has reasoned
+        about, so it is `unknown` rather than whichever came first in a dict."""
         always = (("res.partner", "_retrieve_partner", True),)
         profile, _failures = classify_core_profile(
             probe_for(LEGACY_CORE), markers={"a": always, "b": always}
@@ -302,19 +338,30 @@ KNOWN_PROFILES = (PROFILE_SEARCH_PLAN, PROFILE_LEGACY)
 
 @tagged("post_install", "-at_install")
 class TestCoreProfileOnThisBuild(TransactionCase):
-    """Against the real registry, on either build, without naming a profile."""
+    """Against the real registry, on EITHER build.
+
+    Nothing here names a profile. What it asserts is that the probe gives this
+    build one answer, the same answer twice, and the answer the rest of the
+    module acts on.
+    """
 
     def _unrecognisable_core(self):
-        """Clear the cached parameter and make the live registry
-        unrecognisable; the refusal reads both."""
+        """Both halves of "this build is not one we know", because the refusal
+        reads both: the cache is cleared AND the live registry is made
+        unrecognisable. Clearing the parameter alone no longer refuses anything
+        — that is the whole of F1 — and patching the probe alone is outvoted by
+        a cache that still holds this bench's real answer."""
         self.env["ir.config_parameter"].sudo().search(
             [("key", "=", CORE_PROFILE_PARAM)]
         ).unlink()
         return unknown_core_probe(self.env["account.move"])
 
     def test_the_naive_probe_cannot_fail_here(self):
-        """`hasattr` is true here because this module defines the method, which
-        is why it cannot serve as the probe."""
+        """The control. `hasattr` says yes — and would say yes on the legacy core too.
+
+        This test does not check the probe; it checks that the thing the probe
+        replaces is worthless, so nobody re-introduces it.
+        """
         self.assertTrue(
             hasattr(self.env["account.edi.ubl"], "_import_ubl_retrieve_customer_search_plan")
         )
@@ -328,8 +375,19 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         self.assertTrue(ours, "this module should override the search plan on this tree")
 
     def test_the_mro_walk_sees_core_underneath_our_override(self):
-        """The walk sees core's `_retrieve_partner_with_name` beneath this
-        module's override; core defines it on both builds."""
+        """A name THIS MODULE overrides and core defines on BOTH builds.
+
+        `res.partner._retrieve_partner_with_name` is the legacy adapter's seam
+        (`models/res_partner.py`), and core declares it on both cores — as the
+        last live step of the legacy match, and as a deprecated zero-caller stub
+        on the search-plan build. So it is the one subject that tests exactly
+        what this test is named for, on either bench: our class is in the MRO,
+        core's class is under it, and the walk must see past ours.
+
+        ⚠️ It used to use `_import_ubl_retrieve_customer_search_plan`, which
+        core defines on only one build — so the test asserted the build, not the
+        walk, and failed on the other one for the wrong reason.
+        """
         move = self.env["account.move"]
         ours = [
             klass
@@ -351,8 +409,13 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         self.assertFalse(move._ai_core_defines("no.such.model.at.all", "_anything"))
 
     def test_this_build_matches_exactly_one_known_profile(self):
-        """The live registry matches exactly one known profile, and the other
-        profile fails at least one marker.
+        """🔴 The rule, not the build.
+
+        Two profiles matching would be a core carrying both pipelines; none
+        matching is a core nobody has reasoned about. Both are `unknown`, and
+        both are a refusal. This asserts the live registry lands on exactly one
+        — and that the other one is on record as having failed, so a classifier
+        that simply returned the first key would not pass.
         """
         profile, failures = self.env["account.move"]._ai_detect_core_profile()
         self.assertIn(profile, KNOWN_PROFILES, failures)
@@ -366,7 +429,9 @@ class TestCoreProfileOnThisBuild(TransactionCase):
             )
 
     def test_the_profile_is_recorded_where_support_can_read_it(self):
-        """The stored parameter equals a live re-detection."""
+        """The recorded value must be a live re-detection's answer, not a stale
+        one. A profile that silently flips after a core upgrade is the next
+        version of this bug, and the stored parameter is where support looks."""
         detected, _failures = self.env["account.move"]._ai_detect_core_profile()
         stored = self.env["ir.config_parameter"].sudo().get_param(CORE_PROFILE_PARAM)
         self.assertIn(stored, KNOWN_PROFILES)
@@ -379,16 +444,22 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         )
 
     def test_an_unrecognised_core_logs_an_error_and_records_unknown(self):
-        """An unrecognised core logs an ERROR naming the expectations and
-        records `unknown`."""
+        """The refusal path, driven end to end on a fixture core.
+
+        Without this the ERROR branch and the `unknown` write would ship having
+        never executed — which is how this bug class survives: a log line
+        nobody has seen fire.
+        """
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.core_profile",
+            "odoo.addons.goodahead_invoice_import.models.core_profile",
             logging.ERROR,
         ) as logs:
             profile = self.env["account.move"]._ai_record_core_profile(
                 probe=probe_for(NEITHER_CORE)
             )
         self.assertEqual(profile, PROFILE_UNKNOWN)
+        # The ERROR must name what was expected, not merely that something went
+        # wrong — it is the only thing a reader on an unknown nightly gets.
         self.assertIn("_ubl_import_invoice", "".join(logs.output))
         self.assertEqual(
             self.env["ir.config_parameter"].sudo().get_param(CORE_PROFILE_PARAM),
@@ -396,14 +467,31 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         )
 
     def test_a_recognised_core_logs_the_profile_it_chose(self):
-        """A recognised core logs the chosen profile at INFO.
+        """The control for the test above: a profile that silently flips after a
+        core upgrade is the next version of this bug, so the INFO line is as
+        load-bearing as the ERROR one.
 
-        Use `logging.INFO`, not the string "INFO": some 19.0 builds rebind the
-        name "INFO" to level 25 (RUNBOT), so `assertLogs(..., "INFO")` would
-        filter out real INFO records there.
+        🔴 `logging.INFO`, NEVER THE STRING `"INFO"`, AND THIS IS NOT STYLE.
+        *(measured)* The legacy framework runs
+        `logging.addLevelName(logging.RUNBOT, "INFO")` (`odoo/netsvc.py:325` at
+        `ca1f0aea`), which rebinds `logging._nameToLevel["INFO"]` to **25**. The
+        search-plan framework fixed it — `:340` there registers RUNBOT under its
+        own name. So `assertLogs(..., "INFO")` asks for level 25 on one build
+        and level 20 on the other, and on the legacy build every INFO record is
+        filtered out of the capture.
+
+        The failure that produced is the worst kind: *"no logs of level INFO or
+        higher triggered"*, which reads as "the code did not log" and is really
+        "the test asked for the wrong level". The INFO line was in the bench's
+        own log file the whole time, three hundred milliseconds earlier. An
+        integer means the same thing on both frameworks; a level NAME does not.
+
+        ⚠️ `"WARNING"` and `"ERROR"` happen to be unaffected (30 and 40 on both),
+        so the sibling test above passed throughout and this one did not — which
+        is exactly how a framework difference hides as a code defect.
         """
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.core_profile",
+            "odoo.addons.goodahead_invoice_import.models.core_profile",
             logging.INFO,
         ) as logs:
             recorded = self.env["account.move"]._ai_record_core_profile()
@@ -411,10 +499,19 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         self.assertIn(recorded, "".join(logs.output))
 
     def test_a_good_build_with_no_recorded_profile_still_imports(self):
-        """A missing parameter does not refuse a recognisable build.
+        """🔴 a review finding — the refusal fired on a GOOD build.
 
-        The parameter write may fail (e.g. on a read-only cursor), so the
-        refusal relies on the live detection and repairs the cache.
+        `_ai_store_core_profile`'s write sits in a bare `except Exception` whose
+        own comment names the readonly-cursor case, so "no parameter" is a
+        documented state of a build that is entirely recognisable. The refusal
+        used to read that parameter, recompute the live profile, throw the live
+        answer away and raise anyway — on every `_process_import` and every
+        `_ai_decode_ubl_into_move`, with a message naming the OTHER profile's
+        unmet expectations, which are facts that are correct about this core.
+
+        🔴 AND NOTHING COULD SEE IT: the same missing parameter skips every
+        profile-gated test on both benches, so the suite reports clean while
+        100 % of imports are refused.
         """
         params = self.env["ir.config_parameter"].sudo()
         params.search([("key", "=", CORE_PROFILE_PARAM)]).unlink()
@@ -428,12 +525,14 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         )
 
         self.assertEqual(self.env["account.move"]._ai_assert_core_profile(), live)
-        # The cache is repaired on the way through.
+        # ...and it repaired the cache on the way through, so support reads what
+        # the code acted on rather than nothing.
         self.assertEqual(params.get_param(CORE_PROFILE_PARAM), live)
 
     def test_a_stale_parameter_does_not_outvote_a_recognisable_registry(self):
-        """A stored `unknown` does not refuse a build the registry recognises;
-        the parameter is only a cache."""
+        """The same rule from the other side. A hand-edited or restored row
+        saying `unknown` must not refuse a build the registry recognises —
+        the parameter is a cache of the answer, not the answer."""
         self.env["ir.config_parameter"].sudo().set_param(
             CORE_PROFILE_PARAM, PROFILE_UNKNOWN
         )
@@ -442,11 +541,32 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         self.assertEqual(self.env["account.move"]._ai_assert_core_profile(), live)
 
     def test_a_recognised_cache_does_not_outvote_an_unrecognisable_registry(self):
-        """A stored known profile does not let an unrecognisable registry pass.
+        """🔴 A REVIEW FINDING — THE GUARD TRUSTED THE CACHE IT TELLS
+        YOU NOT TO TRUST.
 
-        After a core upgrade the parameter write may fail and keep the old
-        answer; the guard must still refuse on the live answer. With the
-        registry recognisable again, it answers normally.
+        `_ai_assert_core_profile`'s own docstring says, in bold, *"THE REGISTRY
+        IS THE AUTHORITY; THE PARAMETER IS A CACHE OF ITS ANSWER … It now
+        refuses on the LIVE answer and on nothing else."* That was true of
+        REFUSING and false of ACCEPTING: the first three lines of the method
+        returned the stored parameter whenever it held a known profile, and the
+        live probe was never asked.
+
+        🔴 AND THE MODULE'S OWN TEXT ESTABLISHES THE PREMISE THAT MAKES IT
+        REACHABLE. `_ai_store_core_profile:335-343` — *"🔴 THIS WRITE IS ALLOWED
+        TO FAIL, WHICH IS WHY NOTHING MAY TREAT THE PARAMETER AS THE ANSWER."*
+        So: a deployment takes an Odoo point-upgrade to a build the probe does
+        not recognise; `_register_hook` classifies it `unknown` and tries to
+        store that; on a worker whose registry build holds a read-only cursor
+        the write fails, is logged at WARNING, and the parameter keeps the OLD
+        answer. Both call sites then accept it, the import runs on an unmeasured
+        core where the vendor hooks are silent no-ops, and core mints a vendor
+        from a PDF — the one outcome `core_profile.py:49-52` says there is
+        *"deliberately NO degraded mode"* for.
+
+        CONTROL: the parameter is asserted to hold a KNOWN profile at the moment
+        of the call, which is the whole premise; and a second call with the
+        registry recognisable again must return the live answer rather than
+        raise, so a method that had simply started raising could not pass.
         """
         params = self.env["ir.config_parameter"].sudo()
         move = self.env["account.move"]
@@ -471,18 +591,24 @@ class TestCoreProfileOnThisBuild(TransactionCase):
         )
 
     def test_an_unknown_profile_refuses_at_first_use(self):
-        """An unknown profile refuses at first use, not at load, so module
-        updates and worker starts still work."""
+        """Not at load. A raise in `_register_hook` bricks `-u all` and every
+        worker start on an unrecognised nightly — a worse problem than the one
+        being solved (the dual-core design)."""
         move = self.env["account.move"]
         with self._unrecognisable_core():
-            # Control: the patched registry really is unrecognisable.
+            # CONTROL: the patched registry really is unrecognisable.
             profile, _failures = move._ai_detect_core_profile()
             self.assertEqual(profile, PROFILE_UNKNOWN)
             with self.assertRaises(UserError):
                 move._ai_assert_core_profile()
 
     def test_the_refusal_names_the_unknown_build_and_not_the_other_profile(self):
-        """The refusal message names the expectations of both profiles."""
+        """🔴 a review finding, second half. `detail` is built from the failures
+        of EVERY profile, so on a build that matches one of them it printed only
+        the other one's — naming correct facts as the reason for a refusal and
+        sending a support engineer after a core defect that does not exist. It
+        is only ever rendered now when NEITHER profile matched, so both must
+        appear."""
         move = self.env["account.move"]
         with self._unrecognisable_core():
             with self.assertRaises(UserError) as caught:
@@ -505,13 +631,40 @@ class TestCoreProfileOnThisBuild(TransactionCase):
                 )
 
     def test_an_unknown_profile_refuses_before_claude_is_called(self):
-        """On an unknown core the import fails before the paid call, and the
-        failure is recorded on the import record.
+        """🔴 The refusal must come before the paid call, not after it — AND IT
+        MUST LAND ON THE RECORD (found in review).
 
-        `_fail` imports nothing; it marks the record `failed` with the refusal
-        text so it can be retried once the core is fixed.
+        The refusal itself is unchanged and absolute: no extraction, no bill, no
+        degraded mode. What changed in 19.0.3.21.0 is where it is VISIBLE.
+        `_ai_assert_core_profile` raised out of `_process_import` with nothing
+        around it, so queue_job rolled the transaction back and the record was
+        left in `draft` with an empty `error_message`: a person opening it saw a
+        draft import and no reason, and `action_retry` — which requires
+        `failed` — could not be used once the core was fixed. The SAME refusal
+        raised from `_ai_decode_ubl_into_move` has always been caught by
+        `_finalize_import` and recorded through `_fail`, so one refusal had two
+        outcomes depending on which seam it fired at.
+
+        🔴 THIS IS NOT THE DEGRADED MODE `core_profile.py:49-52` FORBIDS, and
+        the distinction is the whole judgement. A degraded mode would IMPORT on
+        an unmeasured core. `_fail` imports nothing: it writes `failed` plus the
+        refusal text and returns, which is exactly what every other terminal
+        refusal in this method already does (no API key, no PDF, a failed
+        extraction). `_ai_assert_core_profile`'s own docstring names the reason
+        this is the right place for the check — *"there is a human present, A
+        RECORD TO WRITE THE ERROR ON, and a bill that has not yet been
+        created"* — and until now nothing on this path wrote it.
+
+        CONTROLS, three, and each pins a way this could be got wrong:
+          * Claude is never reached. `_NoClaudeMixin` is not in play in this
+            file, so the extractor is patched here explicitly and the patch
+            asserts rather than records.
+          * The refusal TEXT reaches `error_message`, so "state is failed" could
+            not be satisfied by a record that failed for some other reason.
+          * The record is left retryable: `action_retry` is called and does not
+            raise, which is the user-visible consequence the draft state denied.
         """
-        record = self.env["ai.invoice.import"].create({"name": "probe-refusal.pdf"})
+        record = self.env["goodahead.invoice.import"].create({"name": "probe-refusal.pdf"})
 
         def _forbidden(*args, **kwargs):
             raise AssertionError(
@@ -539,20 +692,34 @@ class TestCoreProfileOnThisBuild(TransactionCase):
             "the refusal text itself has to reach the record, or support reads "
             "a failed import with no reason on it",
         )
-        # The record can be retried.
+        # CONTROL: and the record is retryable again once the core is fixed,
+        # which a `draft` record with no error was not.
         record.action_retry()
-        self.assertEqual(record.state, "draft")
+        self.assertEqual(record.state, "waiting")
 
     def test_a_finished_record_is_never_failed_by_the_core_refusal(self):
-        """A finished import is not marked failed by the core refusal; the
-        `done` guard runs before the profile check.
+        """🔴 THE ORDER OF THE TWO GUARDS IS LOAD-BEARING (found in review).
+
+        Recording the refusal through `_fail` is only safe BEHIND the
+        `done`/`move_id` guard. Put the assert first and an unrecognised core
+        rewrites the state of a record that already produced a vendor bill —
+        turning a finished import into a `failed` one, with a message about a
+        core profile, for an import that is over and that this method is about
+        to decline to touch anyway. Nothing is refused by refusing it: a
+        finished record performs no extraction and creates no bill, so there is
+        no paid call and no vendor to invent.
+
+        CONTROL: the same unrecognised core, on a record that is NOT finished,
+        does fail it — asserted in
+        `test_an_unknown_profile_refuses_before_claude_is_called` — so this test
+        cannot pass because the refusal stopped working.
         """
-        record = self.env["ai.invoice.import"].create({"name": "probe-done.pdf"})
-        record.write({"state": "done", "error_message": False})
+        record = self.env["goodahead.invoice.import"].create({"name": "probe-done.pdf"})
+        record.write({"state": "imported", "error_message": False})
 
         with self._unrecognisable_core():
             result = record._process_import()
 
         self.assertEqual(result, "OK: already processed")
-        self.assertEqual(record.state, "done")
+        self.assertEqual(record.state, "imported")
         self.assertFalse(record.error_message)

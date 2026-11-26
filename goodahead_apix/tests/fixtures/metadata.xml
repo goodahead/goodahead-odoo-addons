@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented GetMetadata answer: a package group and a file group -->
+<Response>
+ <Status>OK</Status>
+ <StatusCode>2000</StatusCode>
+ <Content>
+  <Group>
+   <Value type="email">zz.intake@example.com</Value>
+   <Value type="extraInfo">zz extra note</Value>
+  </Group>
+  <Group>
+   <Value type="FileName">zz-invoice-0042.pdf</Value>
+   <Value type="email">zz.receiver@example.com</Value>
+  </Group>
+ </Content>
+</Response>

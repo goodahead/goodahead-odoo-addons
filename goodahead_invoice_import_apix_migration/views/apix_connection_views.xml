@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-05: the way into SCR-07, and where the credentials came from. -->
+    <record id="goodahead_apix_connection_view_form_migration" model="ir.ui.view">
+        <field name="name">goodahead.apix.connection.form.migration</field>
+        <field name="model">goodahead.apix.connection</field>
+        <field name="inherit_id" ref="goodahead_invoice_import_apix.goodahead_apix_connection_view_form_receiving"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_fetch_now']" position="after">
+                <!-- Only where there is something to migrate (or to switch back). -->
+                <button name="%(action_apix_migration)d" type="action" string="Migration tool"
+                        groups="account.group_account_manager"
+                        context="{'default_company_id': company_id}"
+                        invisible="not receiving_via_migration"/>
+            </xpath>
+            <xpath expr="//group[@name='receiving']/field[@name='receiving_state_since']" position="after">
+                <field name="migrated_from" invisible="1"/>
+                <field name="migrated_from_label" invisible="not migrated_from"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

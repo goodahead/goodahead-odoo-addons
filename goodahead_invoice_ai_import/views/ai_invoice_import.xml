@@ -1,97 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
 <odoo>
-    <record id="view_ai_invoice_import_tree" model="ir.ui.view">
-        <field name="name">ai.invoice.import.tree</field>
-        <field name="model">ai.invoice.import</field>
+    <!--
+        The import record's list, form, action and menu belong to
+        `goodahead_invoice_import` (core/source split). What the AI read adds to them is
+        its model and its token usage, in the places they always stood.
+    -->
+    <record id="view_ai_invoice_import_tree_ai" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.tree.ai</field>
+        <field name="model">goodahead.invoice.import</field>
+        <field name="inherit_id" ref="goodahead_invoice_import.view_ai_invoice_import_tree"/>
         <field name="arch" type="xml">
-            <list>
-                <field name="name"/>
-                <field name="state" widget="badge"
-                    decoration-info="state == 'draft'"
-                    decoration-warning="state == 'processing'"
-                    decoration-success="state == 'done'"
-                    decoration-danger="state == 'failed'"
-                />
-                <field name="source_email"/>
-                <field name="move_id"/>
+            <field name="move_id" position="after">
                 <field name="extraction_model"/>
                 <field name="input_tokens"/>
                 <field name="output_tokens"/>
-                <field name="create_date"/>
-            </list>
+            </field>
         </field>
     </record>
 
-    <record id="view_ai_invoice_import_form" model="ir.ui.view">
-        <field name="name">ai.invoice.import.form</field>
-        <field name="model">ai.invoice.import</field>
+    <record id="view_ai_invoice_import_form_ai" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.form.ai</field>
+        <field name="model">goodahead.invoice.import</field>
+        <field name="inherit_id" ref="goodahead_invoice_import.view_ai_invoice_import_form"/>
         <field name="arch" type="xml">
-            <form>
-                <header>
-                    <button
-                        name="action_retry"
-                        type="object"
-                        string="Retry"
-                        class="btn-primary"
-                        invisible="state != 'failed' or move_id"
-                    />
-                    <button
-                        name="action_reimport_from_json"
-                        type="object"
-                        string="Re-import from JSON"
-                        help="Re-run the import from the Extraction JSON below without calling the AI again. Fix the JSON first (e.g. add a missing date)."
-                        invisible="state != 'failed' or not extraction_data or move_id"
-                    />
-                    <field name="state" widget="statusbar"
-                        statusbar_visible="draft,processing,done"
-                    />
-                </header>
-                <sheet>
-                    <group>
-                        <group string="Source">
-                            <field name="name"/>
-                            <field name="source_email"/>
-                            <field name="company_id"/>
-                            <field name="journal_id"/>
-                            <field name="pdf_attachment_id"/>
-                        </group>
-                        <group string="Result">
-                            <field name="move_id"/>
-                            <field name="xml_attachment_id"/>
-                            <field name="extraction_model"/>
-                            <field name="input_tokens"/>
-                            <field name="output_tokens"/>
-                        </group>
-                    </group>
-                    <group string="Error" invisible="not error_message">
-                        <field name="error_message" nolabel="1" colspan="2"/>
-                    </group>
-                    <group string="Extraction Data" invisible="not extraction_data">
-                        <div class="text-muted" invisible="state != 'failed'">
-                            Editable while failed — fix the JSON (e.g. add a missing
-                            date), then use "Re-import from JSON" (no new AI call).
-                        </div>
-                        <field name="extraction_data" nolabel="1" colspan="2"
-                            widget="text" readonly="state != 'failed'"/>
-                    </group>
-                </sheet>
-                <chatter/>
-            </form>
+            <!-- Retry is a new paid AI reading of the PDF; say so first. -->
+            <xpath expr="//button[@name='action_retry']" position="attributes">
+                <attribute name="confirm">Retry reads the PDF with the AI again, which is a paid call. Continue?</attribute>
+            </xpath>
+            <field name="xml_attachment_id" position="after">
+                <field name="extraction_model"/>
+                <field name="input_tokens"/>
+                <field name="output_tokens"/>
+            </field>
         </field>
     </record>
-
-    <record id="action_ai_invoice_import" model="ir.actions.act_window">
-        <field name="name">AI Invoice Imports</field>
-        <field name="res_model">ai.invoice.import</field>
-        <field name="view_mode">list,form</field>
-    </record>
-
-    <menuitem
-        id="menu_ai_invoice_import"
-        name="AI Invoice Imports"
-        parent="account.menu_finance_payables"
-        action="action_ai_invoice_import"
-        sequence="100"
-        groups="account.group_account_user,account.group_account_manager"
-    />
 </odoo>

@@ -1,21 +1,74 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""A document's vendor is never one of our own companies, and neither is its bank.
+"""A document's vendor is never one of our own companies — and neither is its bank.
 
-When the seller prints a phone that the company's own partner also carries,
-core's legacy partner chain can resolve the vendor to the company partner on
-its `company_id = False` pass, and the seller's IBAN then follows the vendor.
-The guard therefore runs at core's partner-resolution seam, with the bank hook
-as a second line of defence.
+🔴 WHAT THIS FILE IS ABOUT, MEASURED RATHER THAN IMAGINED.
 
-The guard is scoped to `ai_invoice_import`: in a multi-company database where
-one company invoices the other, a structured intercompany document's
-counterparty legitimately is another company's partner.
+The case, on a single-company test database (`ZZ Buyer Oy`, whose company
+partner is partner 1):
 
-Key controls: without our context core still picks the company partner (so
-the match is real), a genuine vendor still matches, and a genuine vendor's
-IBAN is still recorded.
+  * bill A, an `in_invoice` from *Goodahead OÜ*, resolved its VENDOR to
+    partner 1 — the buyer's OWN company partner;
+  * `res_partner_bank` row R, ``BE07 1234 5600 0066`` — the SELLER's IBAN,
+    printed on that document — was created against partner 1.
+
+The extraction was **right**: its `seller` block reads
+``{"name": "Goodahead OÜ", "vat": "EE100000000", "phone": "+358400000444", …}``
+and its `buyer` block reads ``{"name": "Goodahead Oy", "vat": "FI00000158"}``.
+Nothing was swapped. What matched was the PHONE: the seller printed
+``+358400000444``, which is byte-identical to the phone on partner 1.
+
+Core's legacy chain (`account/models/partner.py:958` at `ca1f0aea`) runs each of
+its four steps TWICE — once company-scoped, once with ``company_id = False`` —
+and accepts a step's answer when exactly one row comes back. On the
+company-scoped pass that phone matched four employee/related contacts, so
+``len(partner) == 1`` declined. On the ``company_id = False`` pass it matched
+exactly one row: the company's own partner. That is the whole mechanism, and
+the IBAN followed the vendor — core's `_import_partner_bank` takes
+``invoice.partner_id`` for an `in_invoice` (`in_invoice` is NOT in
+``get_inbound_types``), which by then was partner 1.
+
+🔴 SO THERE IS ONE ROOT CAUSE, NOT TWO, AND IT IS AT PARTNER RESOLUTION.
+The bank-side guards are the second line of defence, and they are tested here
+too because the first line cannot be the only one: core has a
+`bank_account_number` search step of its own on the newer pipeline, which reads
+back exactly the stray rows this bug leaves behind.
+
+🔴 AND THE RULE WAS NEVER "LOST" — IT WAS NEVER COMPLETE. `goodahead.partner.
+identifier._drop_partners_that_are_never_a_vendor` has said *"We are never a
+vendor on our own bill. This is not a heuristic."* since 19.0.3.0.0, measured
+against both US-deployment company partners. But it lives inside the three steps
+THIS module inserts, and core resolves a partner through its own vat /
+eas_endpoint / bank_account_number / email / phone / name steps, none of which
+pass through it. The guard could not fire because core had already decided.
+What 19.0.3.23.0 adds is the same body at core's seam, nothing more.
+
+⚠️ AND THE BANK ROW IS A LEGACY-CORE DEFECT ONLY. The newer core refuses it
+one level down: `res.partner.bank._find_or_create_bank_account` raises *"Please
+add your own bank account manually"* for a `res.company.partner_id`
+(`base/models/res_bank.py:209-214` at `189df353`). The legacy core has neither
+that protection nor `_get_company_partner_ids`, and does a bare ``create()``.
+Row R could not exist on the US-deployment build; the wrong VENDOR could.
+
+⚠️ WHY THE GUARD IS SCOPED TO `ai_invoice_import` AND NOT APPLIED TO EVERY
+DOCUMENT. The US deployment is a TWO-COMPANY database (`Alpha LLC` and
+`Beta Inc.`): a Beta customer order becomes a Beta purchase order to
+Alpha, so a genuine intercompany invoice's counterparty legitimately IS
+another company's partner, and real orders travel that path. An unscoped
+refusal would break it. A model's reading of a PDF is a different thing from a
+structured document a counterparty sent, which is the same sentence the three
+sibling overrides in this module already carry.
+
+Controls, each of which can fail and each of which is asserted below:
+
+  * ``test_control_without_our_context_core_still_picks_the_company_partner`` —
+    the match is REAL and the override is the difference. If this one ever
+    fails, every other test here passes for the wrong reason.
+  * ``test_control_a_genuine_vendor_still_matches`` — "refuses the company" has
+    not quietly become "refuses everybody".
+  * ``test_control_a_genuine_vendors_iban_is_still_recorded`` — widening the
+    bank hook to `in_invoice` has not stopped it doing its job.
 """
 
 from unittest.mock import patch
@@ -23,25 +76,30 @@ from unittest.mock import patch
 from odoo.tests import TransactionCase, tagged
 
 from odoo.addons.base.models.res_bank import sanitize_account_number
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import PROFILE_LEGACY
+from odoo.addons.goodahead_invoice_import.models.core_profile import PROFILE_LEGACY
 
 from .profiles import skip_method_unless_profile
 
-#: Put on the company partner in `setUpClass` and printed as the seller's phone
-#: on the document.
-TRAP_PHONE = "+358400000999"
+#: The phone the trap is built on. Put on the COMPANY partner in `setUpClass`
+#: and printed as the SELLER's phone on the document — which is exactly the
+#: shape of bill A above, where the seller prints the same number the buyer's
+#: own company partner carries.
+TRAP_PHONE = "+358501119999"
 
-#: A valid German VAT that belongs to nobody here, so the VAT step cannot match
-#: and resolution reaches the phone step.
-UNKNOWN_VAT = "DE811569869"
+#: A German VAT that passes `base_vat`'s check and belongs to nobody here.
+#: German rather than Finnish so it cannot match the (Finnish) company by VAT —
+#: the point is to reach the PHONE step, not to short-circuit at step 1.
+UNKNOWN_VAT = "DE100000008"
 
-#: A name that matches nothing, so core's name step cannot fire either.
+#: A name that resembles nothing in the database, so core's name step cannot
+#: fire either.
 TRAP_NAME = "ZZ Own Company Trap OU"
 
-#: A valid Belgian IBAN (the canonical documentation example).
+#: A valid Belgian IBAN (the canonical documentation example). NOT the real
+#: number from bill A — a live account number does not belong in a fixture.
 TRAP_IBAN = "BE68 5390 0754 7034"
 
 #: A second valid IBAN, for the genuine-vendor control.
@@ -58,8 +116,9 @@ class _OwnCompanyTrapHarness(TransactionCase):
         cls.company = cls.env.company
         cls.company.claude_api_key = "test-key"
         cls.company_partner = cls.company.partner_id
-        # After this write, core's phone step resolves TRAP_PHONE to the company
-        # partner alone on its `company_id = False` pass.
+        # The trap. One write, and it is the only fixture that matters: after
+        # it, core's phone step resolves this number to the company partner
+        # alone on its `company_id = False` pass.
         cls.company_partner.phone = TRAP_PHONE
         cls.Partner = cls.env["res.partner"]
         cls.Bank = cls.env["res.partner.bank"]
@@ -74,7 +133,14 @@ class _OwnCompanyTrapHarness(TransactionCase):
 
     def _seller(self, name=TRAP_NAME, vat=UNKNOWN_VAT, phone=TRAP_PHONE,
                 iban=TRAP_IBAN):
-        """The `seller` block alone, as the matchers expect it."""
+        """🔴 THE `seller` BLOCK ON ITS OWN.
+
+        It exists because `_extracted()` returns the whole extraction and three
+        tests here handed THAT to `res.partner._ai_find_vendor` and
+        `account.move._ai_vendor_candidates`, which read ``seller["name"]`` and
+        ``seller["vat"]`` — keys the outer dict does not have. All three passed,
+        proving nothing. A matcher handed an unreadable seller always refuses.
+        """
         seller = {
             "name": name,
             "vat": vat,
@@ -138,7 +204,7 @@ class _OwnCompanyTrapHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-ownco.pdf",
                 "company_id": self.company.id,
@@ -204,11 +270,36 @@ class _OwnCompanyTrapHarness(TransactionCase):
         return self.Partner.create(vals)
 
     def _other_company(self):
-        """A second company, so "ours" can be told apart from "any company".
+        """A SECOND company, so "ours" can be told from "any company".
 
-        An existing one is preferred. Otherwise one is created with
-        `current_test` muted: during tests `stock` auto-creates a warehouse for
-        a new company that can fail on databases it did not seed.
+        🔴 WITHOUT THIS FIXTURE THE WHOLE OWNERSHIP RULE IS UNTESTABLE. The legacy
+        bench has exactly one company, so every "is this one of ours" assertion
+        passes whether the rule reads *this* company or *any* company — and the
+        difference is every US-deployment intercompany order.
+
+        🔴 AN EXISTING SECOND COMPANY IS PREFERRED, AND NOT ONLY TO SAVE WORK.
+        On a two-company bench the second company is `Beta Inc.` — the
+        counterparty of the intercompany flow this rule exists to protect, with
+        `out_invoice` rows against it. A fixture company proves the rule; an
+        existing one proves the rule on the data.
+
+        ⚠️ AND CREATING ONE IS HOSTILE ON BOTH BENCHES, FOR TWO DIFFERENT
+        REASONS — both measured, neither anything to do with this module:
+
+        * **The legacy bench**: `stock.res_company.create` has a branch that fires *only
+          during a test run* (`stock/models/res_company.py:192` at `ca1f0aea`),
+          ``if modules.module.current_test: self.env['stock.warehouse'].create(
+          [{'company_id': company.id} …])``. A warehouse created from
+          `company_id` alone gets no `code`, so `view_location_id` is never
+          computed and the INSERT dies on its NOT NULL constraint. The identical
+          `res.company.create` SUCCEEDS outside a test run — so this is core's
+          test-only convenience failing on a database it did not seed. Muting
+          the flag for that one statement is the smallest thing that removes it
+          from the path, and nothing else in `res.company.create` reads it.
+        * **A two-company bench**: a third company trips that database's own routing data —
+          ``ValidationError: Rule Vendors → Customers belongs to ZZ Other Co Oy
+          while the route belongs to ZZ Main Route``. Nothing a fixture should be
+          fixing.
         """
         existing = (
             self.env["res.company"]
@@ -230,7 +321,7 @@ class _OwnCompanyTrapHarness(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
-    """Partner resolution never returns our own company partner."""
+    """Partner resolution. The root cause of bill A."""
 
     @skip_method_unless_profile(PROFILE_LEGACY)
     def test_a_full_import_never_files_the_bill_against_our_own_company(self):
@@ -274,15 +365,28 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
         self.assertTrue(logs, "the refusal has to be visible to the accountant")
 
     def test_the_refusal_does_not_depend_on_a_printed_tax_id(self):
-        """The refusal applies even when the document prints no tax id, since
-        core's phone step does not need one."""
+        """🔴 NOT GATED ON ``name and vat``, unlike the create suppression.
+
+        Core's create cannot fire without both, which is why the suppression
+        next door tests for them. Core's *match* has no such guard: the phone
+        step runs on any document that prints a phone. A document with no tax
+        id at all therefore reaches the company partner just as bill A did.
+        """
         partner, _logs = self._import_partner(vat=None)
 
         self.assertNotEqual(partner, self.company_partner)
         self.assertFalse(partner)
 
     def test_our_own_matcher_never_returns_a_company_partner_on_its_phone_step(self):
-        """Our matcher's phone step never returns the company partner."""
+        """⚠️ THIS ONE ALREADY PASSED AT 19.0.3.22.0, AND IS HERE AS A LOCK.
+
+        `_ai_find_vendor`'s phone step resolves through
+        `goodahead.partner.identifier._commercial_partner_for`, which has
+        applied the own-company rule since 19.0.3.0.0. Nothing in 19.0.3.23.0
+        changes this path; the test exists so that a future refactor of the
+        identifier helper cannot drop the rule silently. It is NOT evidence for
+        this change — the two below are.
+        """
         seller = self._extracted()["seller"]
 
         match = self.Partner._ai_find_vendor(seller)
@@ -291,12 +395,27 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
         self.assertFalse(match)
 
     def test_our_own_matcher_never_returns_a_company_partner_on_its_vat_step(self):
-        """Our matcher's VAT step never returns the company partner."""
-        # A German VAT so it cannot collide with existing partners' VATs.
+        """🔴 RED AT 19.0.3.22.0. Two of the matcher's six steps were unguarded.
+
+        Steps 2-4 go through `goodahead.partner.identifier`, so the matcher
+        LOOKED guarded. Step 1 (VAT, ``=ilike``) and step 6 (name, ``=ilike``)
+        search `res.partner` directly and did not. A document printing our own
+        VAT — a seller/buyer block the model read the wrong way round, which is
+        the hypothesis bill A was first blamed on — went straight past it.
+        """
+        # ⚠️ NOT a Finnish number. The first version of this fixture used
+        # `FI00000094`, which this database already holds on two OTHER partners
+        # (another company and a contact of it) — so the fixture check below
+        # failed and said so, instead of the test quietly measuring an
+        # ambiguous VAT. `UNKNOWN_VAT` is German, valid, and belongs to nobody.
         self.company_partner.vat = UNKNOWN_VAT
         seller = self._seller(vat=self.company_partner.vat, phone=None)
-        # `vat` is a commercial field and propagates to child contacts, so assert
-        # that every row it reaches belongs to our own party.
+        # ⚠️ NOT ``== self.company_partner``. `vat` is a COMMERCIAL field, so
+        # writing it on the company partner propagates it to every child
+        # contact — on the US bench that is five rows, and the first
+        # version of this check failed there and said so. What has to be true is
+        # that every row the key reaches is OUR OWN PARTY, which is what the
+        # guard is about; how many contact rows carry it is not the subject.
         reached = self.Partner.search([("vat", "=ilike", seller["vat"])])
         self.assertIn(self.company_partner, reached, "fixture check: the key reaches us")
         self.assertEqual(
@@ -311,8 +430,12 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
         self.assertFalse(match)
 
     def test_our_own_matcher_never_returns_a_company_partner_on_its_name_step(self):
-        """Our matcher's name step never returns the company partner."""
-        # Rename the company to a sentinel so the name is unambiguous; the write
+        """🔴 RED AT 19.0.3.22.0 — step 6, for the same reason as step 1."""
+        # ⚠️ THE COMPANY IS RENAMED TO A SENTINEL, NOT MATCHED ON ITS REAL NAME.
+        # The first version printed `self.company_partner.name` and the fixture
+        # check failed on the US bench, where `name =ilike 'Alpha
+        # LLC'` reaches THREE top-level partners (ids 1, <id>, 100306). An
+        # ambiguous key tests core's uniqueness rule, not this guard. The write
         # is rolled back with the test.
         self.company_partner.name = "ZZ Our Own Company Oy"
         seller = self._seller(name=self.company_partner.name, vat=None, phone=None)
@@ -330,7 +453,14 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
         self.assertFalse(match)
 
     def test_the_company_partner_is_not_offered_as_a_candidate_by_name(self):
-        """The company partner is never offered as a vendor candidate by name."""
+        """🔴 RED AT 19.0.3.22.0. The phone and domain signals were guarded; the
+        three NAME searches in `_ai_vendor_candidates` were not.
+
+        Offering it is an invitation to make the same mistake by hand:
+        `vendor_candidate.action_use_this` writes `move.partner_id = candidate`
+        and then applies the seller's phone, email and address to it — so a card
+        for our own company is one click from BOTH halves of bill A.
+        """
         self.company_partner.name = "ZZ Our Own Company Oy"
         seller = self._seller(name=self.company_partner.name, phone=None)
 
@@ -343,7 +473,18 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_a_name_that_resembles_a_real_vendor_is_still_offered(self):
-        """Control: a genuine vendor resembling the seller is still offered."""
+        """Dropping ourselves is not dropping the feature.
+
+        🔴 AND THIS CONTROL EARNED ITS KEEP BEFORE THE FIX WAS EVEN FINISHED.
+        Its first version passed ``self._extracted(...)`` — the whole extraction
+        dict — where a `seller` BLOCK was wanted, so `_ai_vendor_candidates` read
+        ``.get("name")`` off a dict that has no ``name`` key, found nothing and
+        returned ``[]``. This control failed and said so. The three tests either
+        side of it had the identical mistake and PASSED, vacuously: a guard
+        cannot be proved by handing the matcher a seller it cannot read. That is
+        why `_seller()` exists and why each of them now asserts its fixture
+        first.
+        """
         vendor = self._genuine_vendor()
         seller = self._seller(name="ZZ Genuine", vat=None, phone=None)
 
@@ -354,10 +495,13 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
     # -- controls ------------------------------------------------------
 
     def test_control_without_our_context_core_still_picks_the_company_partner(self):
-        """Control: without our context, core still picks the company partner.
+        """🔴 THE CONTROL THE WHOLE FILE RESTS ON.
 
-        Proves the match is real and that the override is what changes the
-        answer; core's behaviour on other documents is deliberately unchanged.
+        It proves the match is real rather than hypothetical, and that the
+        override is what changes the answer. It also pins the SCOPE: core's
+        behaviour on a document this module did not produce is deliberately
+        unchanged, because an intercompany invoice's counterparty legitimately
+        is another company's partner.
         """
         partner, _logs = self._import_partner(ours=False)
 
@@ -377,22 +521,36 @@ class TestTheVendorIsNeverOurOwnCompany(_OwnCompanyTrapHarness):
 
 @tagged("post_install", "-at_install")
 class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
-    """The guard protects the bill's own company, not every company.
+    """🔴 THE RULE WAS NARROWED, AND THE NARROWING IS LOAD-BEARING.
 
-    The rule:
+    The first statement of the requirement: exclude any company-related contact,
+    and any user as well. Then, asked what "our own" means in a two-company
+    estate: for Alpha, first check the current company for a contact, and then
+    accept a contact that does not belong solely to another company.
 
-      1. refuse the bill's own company partner and its contact tree;
+    Read literally, the FIRST would refuse **Beta Inc.** — and a Beta
+    document billing Alpha LLC is the intercompany flow real orders
+    travel, not a mistake. So the rule is:
+
+      1. refuse the BILL'S OWN company partner and its contact tree;
       2. refuse any partner carrying a `res.users` row;
-      3. refuse a contact owned by another company (`company_id` set to it);
-      4. allow another company's own partner (a shared contact), since
-         intercompany invoices are legitimate.
+      3. refuse a contact OWNED by another company (`company_id` set to it);
+      4. **allow** another company's own partner — `company_id = False`, a
+         shared contact under the ownership rule above.
+
+    Every test below has a control, and the controls are what distinguish "this
+    company" from "any company" and "ancestry" from "commercial partner".
     """
 
     # -- rule 1: the ancestry, not just the partner --------------------
 
     def test_a_child_of_the_company_partner_is_refused(self):
-        """Contacts below the company partner are refused, including a grandchild
-        whose parent has `is_company = True` (its own commercial partner)."""
+        """🔴 RED. `commercial_partner_id` alone does NOT catch a grandchild
+        whose parent carries ``is_company = True`` — the child is then its own
+        commercial partner and the company never appears. bill A came
+        within one unique phone match of being filed against a related contact,
+        so the ancestry walk is the structural answer.
+        """
         child = self.Partner.create(
             {"name": "ZZ Dept Of Ours", "is_company": True,
              "parent_id": self.company_partner.id}
@@ -415,7 +573,12 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
             )
 
     def test_control_a_vendor_with_a_parent_company_of_its_own_is_accepted(self):
-        """Control: a vendor and its child contacts are accepted."""
+        """The control that keeps rule 1 from eating the contact book.
+
+        A test that only checked "has a parent" or "has a commercial partner"
+        would refuse every contact of every vendor — a US reference database has dozens of child
+        contacts under partners with `supplier_rank > 0`.
+        """
         vendor = self._genuine_vendor()
         contact = self.Partner.create(
             {"name": "ZZ AP Desk", "parent_id": vendor.id}
@@ -432,7 +595,7 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
     # -- rule 2: a login is never a vendor -----------------------------
 
     def test_a_partner_carrying_a_user_is_refused(self):
-        """A partner carrying a user is refused."""
+        """🔴 RED. Rule 2: any user is refused as well."""
         vendor = self._genuine_vendor()
         self.assertFalse(
             self.Partner._ai_impossible_vendor_reason(vendor, company=self.company),
@@ -451,8 +614,12 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_a_vendor_whose_child_contact_has_a_user_is_still_accepted(self):
-        """A login on a vendor's child contact does not refuse the vendor: the
-        ancestry walk only goes upward."""
+        """🔴 THE ANCESTRY WALK MUST NOT GO DOWNWARD.
+
+        A vendor with a portal login on one of its contacts is ordinary. If
+        `_ai_partner_ancestry` ever walked children, this test fails and
+        real vendors would start being refused.
+        """
         vendor = self._genuine_vendor()
         contact = self.Partner.create(
             {"name": "ZZ Portal Contact", "parent_id": vendor.id}
@@ -470,7 +637,13 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
     # -- rules 3 and 4: ownership, and the intercompany case -----------
 
     def test_a_contact_owned_by_another_company_is_refused(self):
-        """A contact owned solely by another company is refused."""
+        """🔴 RED. *"and than contact that doesn't belong solely to another
+        company"* — so one that DOES belong solely to another company is out.
+
+        On a US reference database this is not hypothetical: a share of the partners with
+        `supplier_rank > 0` carry `company_id = 2`, and on an Alpha LLC bill
+        every one of them is the wrong answer.
+        """
         other = self._other_company()
         theirs = self._genuine_vendor(
             name="ZZ Theirs Only Oy", company_id=other.id, vat=None, phone=None
@@ -482,7 +655,10 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_the_same_contact_shared_is_accepted(self):
-        """Control: the same contact with `company_id` cleared is accepted."""
+        """The only thing that proves the test above is about OWNERSHIP.
+
+        Same record, same name, same everything — `company_id` cleared.
+        """
         other = self._other_company()
         shared = self._genuine_vendor(
             name="ZZ Theirs Only Oy", company_id=other.id, vat=None, phone=None
@@ -501,7 +677,12 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_another_companys_own_partner_is_accepted(self):
-        """Another company's own partner is accepted (the intercompany case)."""
+        """🔴 THE INTERCOMPANY CASE, AND THE REASON THE RULE WAS NARROWED.
+
+        `Beta Inc.` billing `Alpha LLC` is a legitimate document. Under the
+        first reading of the brief — "any company-related contact" — this
+        assertion fails and the intercompany flow breaks.
+        """
         other = self._other_company()
 
         self.assertTrue(other.partner_id, "fixture check: the company has a partner")
@@ -518,10 +699,13 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_the_guard_follows_the_BILLS_company_not_the_environments(self):
-        """The guard follows the bill's company, not `self.env.company`.
+        """🔴 `self.env.company` IS NOT THE ANSWER, AND PASSING IT WOULD BE A
+        SILENT DEFECT.
 
-        The import runs in a queue job, so the environment's company is not
-        reliably the bill's. Both directions are asserted.
+        The import runs in a queue job. If the guard read the environment, it
+        would protect whichever company the job happened to be in — refusing a
+        legitimate intercompany vendor and letting the real defect through. Both
+        directions are asserted, so neither can pass by accident.
         """
         other = self._other_company()
 
@@ -541,8 +725,13 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
     # -- the ordering -------------------------------------------------
 
     def test_the_current_companys_contact_wins_over_an_equally_good_shared_one(self):
-        """With two equally good name matches, the current company's own contact
-        wins over a shared one."""
+        """🔴 *"it would first check the current company for a contact, and than
+        contact that doesn't belong solely to another company."*
+
+        Two partners, same exact name, one owned by this company and one shared.
+        Core's legacy chain already orders its own steps this way; this asserts
+        that OUR two direct `res.partner` steps do too.
+        """
         shared = self._genuine_vendor(
             name="ZZ Tie Break Oy", vat=None, phone=None, company_id=False
         )
@@ -561,7 +750,11 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_with_no_current_company_match_the_shared_one_is_still_found(self):
-        """Control: without a current-company match the shared contact is found."""
+        """The control that stops the ordering passing by refusing everything.
+
+        Delete the current-company row and the shared one must be the answer —
+        otherwise "ours wins" would be indistinguishable from "nothing matches".
+        """
         shared = self._genuine_vendor(
             name="ZZ Tie Break Oy", vat=None, phone=None, company_id=False
         )
@@ -573,10 +766,19 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
 
         self.assertEqual(match, shared, "a shared contact is still a match")
 
-    # -- every matcher step applies the refusal ------------------------------
+    # -- PR #336 review finding 1: every step, not five of six -------------
 
     def test_the_business_id_step_refuses_the_company_partner(self):
-        """The business-id step refuses the company partner."""
+        """🔴 RED. The ONE step in the matcher that applied no refusal at all.
+
+        Steps 1 and 6 go through `_ai_vendor_search`; the phone and domain steps
+        go through `goodahead.partner.identifier`, which has dropped our own
+        company partners since 19.0.3.0.0. The business-id step did a bare
+        `search(..., limit=1)` and handed the result straight back — to
+        `_create_partner_from_extraction`, to the create-contact button whose
+        docstring promises this cannot happen, and to core through the legacy
+        name-slot adapter. Five of six covered is exactly why nothing noticed.
+        """
         self.company_partner.company_registry = "ZZ-OWNCO-REG-1"
         self.company_partner.country_id = self.env.ref("base.fi").id
         seller = self._seller(
@@ -587,7 +789,7 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         self.assertEqual(
             self.Partner.search(
                 self.Partner._ai_vendor_registry_domain("ZZ-OWNCO-REG-1", "FI")
-            ).commercial_partner_id,
+            ),
             self.company_partner,
             "fixture check: that registration number reaches us and nobody else",
         )
@@ -598,10 +800,12 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         self.assertFalse(match)
 
     def test_the_import_path_caller_is_given_the_bills_company(self):
-        """`_create_partner_from_extraction` passes the bill's company.
+        """🔴 RED. `_create_partner_from_extraction` passed no company, so the
+        guard inside the matcher protected `self.env.company` — which in a queue
+        job is not reliably the bill's.
 
-        Checked by recording what the matcher is asked, since the answer is the
-        same on a one-company database.
+        Asserted by watching what the matcher is ASKED, because the answer is
+        the same on a one-company bench and the defect is in the question.
         """
         seen = []
         original = type(self.Partner)._ai_find_vendor
@@ -623,16 +827,35 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
             "the matcher is asked about the BILL's company, not the env's",
         )
 
-    # -- the fetch window ----------------------------------------------------
+    # -- PR #336 review finding 2: the fetch window -------------------------
 
     def test_a_refused_row_does_not_consume_the_fetch_window(self):
-        """Refused rows do not use up the fetch window.
+        """🔴 RED, AND THE FAILURE IS A MISS RATHER THAN A WRONG MATCH.
 
-        Otherwise a legitimate vendor behind twenty refused rows would never be
-        seen and the bill would match nothing. Uses the business-id step (no
-        `parent_id` leaf) and `company_registry`, a commercial field inherited
-        by the company partner's 25 child contacts, all refused by rule 1. The
-        eligible vendor is created last so it sorts behind them.
+        Twenty refused rows came back, all were dropped, and a legitimate vendor
+        at row twenty-one was never seen — so a bill that used to match
+        correctly matched NOTHING. That is the opposite failure from the one
+        this branch exists to fix, and it is silent.
+
+        🔴 THE FIRST VERSION OF THIS TEST PASSED ON THE BROKEN CODE, which
+        means it was testing nothing. It filled the window with contacts UNDER
+        the company partner and searched through `_ai_seller_name_domain` —
+        whose own leaf is ``('parent_id', '=', False)``. Every filler row was
+        excluded by the caller's domain before the guard was reached, so the
+        window was never full. A fixture that cannot reproduce the defect is
+        indistinguishable from a fix.
+
+        It uses the BUSINESS-ID step instead, which carries no `parent_id` leaf.
+        `company_registry` is a COMMERCIAL field
+        (`base/models/res_partner.py:688` at `ca1f0aea`), so children of the
+        company partner inherit it — 25 rows that satisfy the caller's domain
+        and are all refused by rule 1. ⚠️ `company_registry` rather than `vat`
+        for one measured reason: `vat` carries a checksum, an invented German
+        number raised `ValidationError` in the fixture, and a registration
+        number is validated by nobody. Both the fillers and the eligible vendor
+        are ``company_id = False``, so they compete in the SAME ownership pass,
+        and the eligible one is created last so it sorts behind them on the
+        `create_date asc, id asc` tiebreak.
         """
         registry = "ZZ-WINDOW-REG-1"
         country = self.env.ref("base.de")
@@ -681,10 +904,13 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_an_eligible_vendor_inside_the_window_costs_the_same_searches(self):
-        """Control: the answer and the number of searches are unchanged.
+        """🔴 THE CONTROL THAT STOPS "RAISE THE LIMIT TO 200" PASSING.
 
-        One fetch per ownership pass, whether or not the window is full, so the
-        fix is a domain term and not a paging loop.
+        Two things at once, and both matter. The ANSWER must be unchanged when
+        the eligible vendor is inside the window; and the number of searches
+        must be unchanged too — one per ownership pass — because the fix had to
+        be a domain term and not a paging loop, on a path that runs for every
+        imported bill.
         """
         registry = "ZZ-NARROW-REG-1"
         country = self.env.ref("base.de")
@@ -698,8 +924,22 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
         domain = self.Partner._ai_vendor_registry_domain(registry, "DE")
 
-        # Count only searches mentioning the sentinel registration number: the
-        # guard's own bookkeeping queries (contact tree, logins) are excluded.
+        # 🔴 ONLY THE CALLER'S OWN FETCHES ARE COUNTED, AND TWO EARLIER
+        # VERSIONS OF THIS TEST COUNTED THE WRONG THING.
+        #
+        #   * "at most 2 partner searches" measured **5** — because the total
+        #     includes the guard's own bookkeeping: `_ai_refused_vendor_domain`
+        #     runs a `child_of` search for the company's contact tree and a
+        #     login lookup, on every call.
+        #   * "the same total in both cases" measured **6 against 5** — because
+        #     filling the tree with 25 contacts makes the `child_of` resolution
+        #     itself cost one more query. That is recursion depth, not paging,
+        #     and a paging loop would have looked identical.
+        #
+        # The sentinel REGISTRATION NUMBER appears only in the caller's own
+        # domain, so counting the searches that mention it isolates exactly the
+        # fetches a paging loop would multiply: one per ownership pass, twice,
+        # whatever the data.
         counted = []
         original = type(self.Partner)._search
 
@@ -717,8 +957,8 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
             inside, 2, "one fetch per ownership pass, and there are two passes"
         )
 
-        # With the window full it is still two: refused rows are excluded by the
-        # search itself.
+        # And with the window full it is still two: the refused rows are gone
+        # from the SEARCH, so there is nothing to page through.
         self.company_partner.write(
             {"company_registry": registry, "country_id": country.id}
         )
@@ -747,7 +987,13 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
         )
 
     def test_control_the_post_filter_is_still_the_authority(self):
-        """The post-filter still refuses what the domain narrowing misses."""
+        """The domain is a NARROWING, not the rule.
+
+        It cannot express the ancestry walk, so a refused party the domain
+        misses must still be dropped. Proved by stubbing the narrowing away and
+        asserting the answer is unchanged — if the post-filter had been removed
+        in favour of the domain, this fails.
+        """
         with patch.object(
             type(self.Partner), "_ai_refused_vendor_domain", return_value=[]
         ):
@@ -778,12 +1024,26 @@ class TestTheGuardIsScopedToTheBillsOwnCompany(_OwnCompanyTrapHarness):
 
 @tagged("post_install", "-at_install")
 class TestTheBankHookIsTheSecondLineOfDefence(_OwnCompanyTrapHarness):
-    """`account.edi.common._import_partner_bank` on purchase documents.
+    """`account.edi.common._import_partner_bank` — the older decoder's half.
 
-    Core picks the account holder from `invoice.is_inbound()`. The guards (no
-    vendor, or a vendor that is one of our companies) apply to every purchase
-    document; sale documents and a correctly resolved vendor on an
-    `in_invoice` keep core's behaviour, including `partner_bank_id`.
+    🔴 WHAT THE ``in_refund``-ONLY CONDITION WAS PROTECTING, BEFORE IT WAS
+    WIDENED. Core picks the side from ``invoice.is_inbound()``, and
+    ``get_inbound_types`` is ``['out_invoice', 'in_refund', 'out_receipt']``
+    (`account/models/account_move.py:6303` at `ca1f0aea`). So:
+
+      * on `in_refund` core takes ``self.env.company.partner_id`` — the
+        credit-note bank bug, and the reason the divert exists;
+      * on `in_invoice` core already takes ``invoice.partner_id``, which is the
+        right side, and it also sets ``invoice.partner_bank_id``;
+      * on `out_invoice` / `out_receipt` core takes the company partner and is
+        CORRECT — that is our account, for the customer to pay into.
+
+    ⚠️ So "widen it to every inbound move type" literally would be a
+    REGRESSION: it would divert the two sale documents core gets right. What is
+    widened here is the two GUARDS — no vendor, and a vendor that is one of our
+    own companies — to every purchase document, while a correctly-resolved
+    vendor on an `in_invoice` keeps core's behaviour unchanged, including the
+    ``partner_bank_id`` core sets.
     """
 
     def test_no_bank_row_when_the_vendor_is_our_own_company(self):
@@ -795,8 +1055,13 @@ class TestTheBankHookIsTheSecondLineOfDefence(_OwnCompanyTrapHarness):
             self._bank_rows_for(self.company_partner),
             "a vendor's IBAN is never recorded against our own company",
         )
-        # Core's compute may legitimately offer the company partner's own
-        # account; what must not happen is the document's number landing there.
+        # ⚠️ NOT ``assertFalse(bill.partner_bank_id)``, and the first draft of
+        # this test said exactly that and failed on `res.partner.bank(2,)`.
+        # This fixture's `partner_id` IS the company partner, so core's
+        # `_compute_partner_bank_id` legitimately offers that partner's own
+        # existing account — which is the compute doing its job, not this hook
+        # writing anything. What the hook must not do is put the DOCUMENT's
+        # number there.
         self.assertNotEqual(
             bill.partner_bank_id.sanitized_acc_number,
             sanitize_account_number(TRAP_IBAN),
@@ -804,7 +1069,28 @@ class TestTheBankHookIsTheSecondLineOfDefence(_OwnCompanyTrapHarness):
         )
 
     def test_no_bank_row_and_no_crash_when_the_bill_has_no_vendor(self):
-        """A bill with no vendor gets no bank row and does not crash."""
+        """🔴 A LOCK, NOT A REPAIR — AND IT WAS WRITTEN AS A REPAIR.
+
+        The claim this test was written to prove: once the vendor is refused,
+        ``invoice.partner_id`` is empty, core does
+        ``create({'acc_number': …, 'partner_id': partner.id})`` with
+        ``partner.id`` False, ``res.partner.bank.partner_id`` is ``required``,
+        so the decode fails and the root fix alone breaks every bill printing
+        an IBAN.
+
+        **It PASSED against 19.0.3.22.0.** Core never reaches the create:
+        ``partner_bank.partner_id == partner`` compares two EMPTY recordsets,
+        which is True, so core assigns the empty recordset and returns
+        (`account_edi_common.py:581-586` at `ca1f0aea`). The claim was read off
+        the source and the source was not run — this project's signature
+        mistake, so it is written down rather than quietly deleted.
+
+        The test stays because the OUTCOME is the one we want and nothing else
+        asserted it, and because the same situation on the search-plan core
+        reads as if it would raise (`_find_or_create_bank_account` has no
+        empty-partner branch) — which is a reading, not a measurement, and this
+        bench cannot settle it.
+        """
         bill = self._draft_bill(None)
 
         self.EdiCommon._import_partner_bank(bill, [TRAP_IBAN])
@@ -834,7 +1120,7 @@ class TestTheBankHookIsTheSecondLineOfDefence(_OwnCompanyTrapHarness):
         )
 
     def test_control_a_received_credit_note_still_goes_to_the_vendor(self):
-        """A received credit note's IBAN still goes to the vendor."""
+        """The original credit-note bank case, unchanged by the widening."""
         vendor = self._genuine_vendor()
         note = self._draft_bill(vendor, move_type="in_refund")
 

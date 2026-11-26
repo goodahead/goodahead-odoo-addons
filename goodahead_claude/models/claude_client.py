@@ -10,9 +10,19 @@ from ..lib import claude_client as _api
 
 _logger = logging.getLogger(__name__)
 
-# The only place a model is judged by its id: the models API exposes no capability tier.
-# This is an exclusion, not a ranking - it keeps the small tier from becoming the default
-# for callers that never chose a model.
+# 🔴 19.0.1.3.0 — the ONLY place this module judges a model by its name, and it is a deliberate,
+# bounded exception to `claude_model.py`'s "do not parse the id" rule.
+#
+# That rule exists because the API hands us `created_at`, so parsing a date out of an id is
+# both unnecessary and wrong. Capability tier is different: `GET /v1/models` reports `id`,
+# `display_name`, `created_at`, `max_input_tokens` and `capabilities.pdf_input` — and nothing
+# that says "this is the small model". There is no non-name signal to use, so the choice is
+# between naming the small tier and silently defaulting to it.
+#
+# It is an EXCLUSION, not a ranking: the resolver does not claim to know whether Opus beats
+# Sonnet. It only refuses to make the small tier the default for callers who never chose one.
+# An unknown future small tier simply is not matched, which lands on the old behaviour rather
+# than on an error — add its token here when one appears.
 _SMALL_TIER_TOKENS = ("haiku",)
 
 
@@ -30,13 +40,41 @@ class ClaudeClient(models.AbstractModel):
     _name = "goodahead.claude.client"
     _description = "Claude API Client"
 
-    # The default model is resolved, never hardcoded: the company's configured default, then
-    # the fallback among synced models, then one automatic sync, then a UserError naming the
-    # fix. Raising beats a stale literal, which would fail later as an opaque 404.
+    # ------------------------------------------------------------------ #
+    # Q3 — the default model is RESOLVED, never hardcoded.                #
+    # ------------------------------------------------------------------ #
+    #
+    # 🔴 It used to fall back to `lib.claude_client.DEFAULT_MODEL`, a literal that had gone
+    # stale: `claude-sonnet-4-20250514` is retired, so every call that did not name a model
+    # explicitly was aimed at a model id the API no longer serves. Nothing in the tree caught
+    # it, because the failure is a 404 from Anthropic at call time rather than anything a gate
+    # can see -- and a constant is only correct until the vendor ships again.
+    #
+    # The fix: make the default dynamic, chosen from the fetched models.
+    #
+    # The module already had the machinery -- `sync_models()` reads GET /v1/models into
+    # `goodahead.claude.model`. What was missing was using it. `_resolve_model` now walks:
+    #
+    #   1. the company's configured `claude_default_model_id`  — an explicit choice wins;
+    #   2. the newest row in `goodahead.claude.model`          — ordered by the API's own
+    #                                                            `created_at`, not by parsing
+    #                                                            a date out of the id;
+    #   3. one automatic `sync_models()`, then 2 again         — so a fresh database that has
+    #                                                            never synced still works;
+    #   4. a UserError naming the fix.
+    #
+    # 🔴 Step 4 raises rather than falling back to a literal, and that is deliberate. A stale
+    # constant fails anyway -- as a 404 from Anthropic, at call time, in whatever job happened
+    # to make the call. Raising here fails in the same place but says WHY and what to do about
+    # it, which is the whole difference between the old behaviour and this one.
 
     @api.model
     def _parse_api_datetime(self, value):
-        """Parse the models API `created_at` into a naive UTC datetime, or False."""
+        """`created_at` from the models API ('2025-02-19T00:00:00Z') -> a naive UTC datetime.
+
+        Returns False on anything unparseable, so one odd row can never abort a sync of the
+        rest. A model with no `created_at` simply sorts last, which is the safe direction.
+        """
         if not value:
             return False
         try:
@@ -49,15 +87,52 @@ class ClaudeClient(models.AbstractModel):
 
     @api.model
     def _fallback_model(self, ClaudeModel, requires_pdf=False):
-        """The model to use when no one has chosen one.
+        """The model to use when NOBODY has chosen one. Renamed from `_newest_model` (19.0.1.3.0).
 
-        Prefers non-small-tier models, then the most recently released, then dated rows over
-        undated ones; if every model is small-tier, the newest of those. Archived models are
-        excluded by `active_test`. `requires_pdf` restricts to PDF-capable models, but degrades
-        with a warning when none reports PDF support (more likely missing capability data).
+        🔴 The old name was the bug. "Newest" meant newest by RELEASE DATE, and after a sync
+        the newest release is whatever Anthropic shipped last — which was `claude-haiku-5-5`,
+        the SMALL tier. A client that extracts invoices and scores orders for fraud silently
+        got the cheapest model, because it shipped most recently. Recency is not capability.
 
-        Each preference is a separate search on purpose: PostgreSQL sorts NULLs first under
-        DESC, so relying on `_order` would make an undated row the default.
+        The rule now, stated exactly:
+
+          1. prefer models whose id does NOT name the small tier (`_SMALL_TIER_TOKENS`);
+          2. within that preference, the most recently released one;
+          3. preferring rows that carry a `created_at` over rows that do not;
+          4. if EVERY listed model is small-tier, take the newest of those rather than fail —
+             a wrong-sized default is recoverable, no default at all is an outage.
+
+        Archived models are excluded for free: `search` applies `active_test`, so a model the
+        last sync did not see can never become the fallback. That is half of 19.0.1.3.0's fix.
+
+        🔴 Do NOT collapse this into `search([], limit=1)` and lean on `_order`. PostgreSQL's
+        `DESC` implies **NULLS FIRST**, so a row with no `created_at` sorts to the TOP of a
+        `created_at desc` ordering — the exact opposite of what is wanted, and it would make
+        an undated row the silent default. Found by the fixture test, which is the only
+        reason it is not still in here: the first version of this method had that bug and
+        looked completely reasonable.
+
+        Odoo's `_order` parser will not take a raw `NULLS LAST` fragment, so each preference
+        is expressed as its own search instead of one clever one.
+
+        🔴 `requires_pdf` (2026-10-09) is the SAME BUG AS THE SMALL TIER, in the other
+        column. `sync_models` has always recorded `capabilities.pdf_input.supported` into
+        `goodahead.claude.model.pdf_supported`, and until now NOTHING READ THAT FIELD —
+        not this resolver, not the settings dropdown, nothing but a search filter on the
+        list view. So the next sync that brought in a newer model without PDF support
+        would have silently retargeted `goodahead_invoice_ai_import` — which sends a PDF
+        and nothing else — at a model that cannot read the document. Recency is not
+        capability, and neither is tier.
+
+        It is a per-call REQUIREMENT, never a global preference: a caller that sends text
+        passes nothing and gets exactly the model it got before. `goodahead_fraud_detection`
+        is such a caller, and it also pins its own model, so it is twice removed from this.
+
+        ⚠️ The requirement DEGRADES rather than fails, for the same reason as rule 4 above:
+        if not one listed model claims PDF support the likeliest explanation is that the
+        capability data is missing, not that Anthropic has withdrawn PDF input from the
+        whole catalogue. A wrong model is recoverable and says so in the log; no model at
+        all is an outage.
         """
         big_tier = [("model_api_id", "not ilike", token) for token in _SMALL_TIER_TOKENS]
         capability = [[("pdf_supported", "=", True)], []] if requires_pdf else [[]]
@@ -82,16 +157,19 @@ class ClaudeClient(models.AbstractModel):
 
     @api.model
     def _resolve_model(self, company, model=None, requires_pdf=False):
-        """The model id to send. See the comment at the top of the class for the order."""
+        """The model id to send. See the block comment above for the order and why."""
         if model:
-            # An explicit model is returned untouched, archived or not: it is the caller's
-            # configuration, and the API reports a retired id at call time.
+            # 🔴 An EXPLICIT model is returned untouched, archived or not. Fraud detection
+            # pins `res.company.fraud_model_id` and passes it here; 19.0.1.3.0 must not change what
+            # a pinned model does. If a pinned model really has been retired, the API says so
+            # at call time — that is the caller's configuration to fix, not ours to override.
             return model
 
         default = company.claude_default_model_id
         if default and not default.active:
-            # Raise rather than send an id the API will reject or silently substitute
-            # a different model than the company chose.
+            # 19.0.1.3.0: the configured default is no longer in the catalogue. Say so, loudly,
+            # instead of either sending a model id the API will 404 or silently substituting
+            # a different model than the one this company chose. Same reasoning as step 4.
             raise UserError(_(
                 "Company %(company)s is configured to use the Claude model "
                 "\"%(model)s\" (%(api_id)s), which the Anthropic models API no longer "
@@ -104,8 +182,15 @@ class ClaudeClient(models.AbstractModel):
             })
         ClaudeModel = self.env["goodahead.claude.model"].sudo()
         if requires_pdf and default and not default.pdf_supported:
-            # Raise only when a PDF-capable alternative exists; otherwise the capability
-            # data is probably missing, so warn and proceed like `_fallback_model`.
+            # The company's chosen default cannot read a document and the caller is
+            # about to send one. Raise for the same reason the archived branch above
+            # raises: the alternative is a 400 from the API with no explanation, or
+            # silently sending a different model than this company chose.
+            #
+            # ⚠️ Only when a PDF-capable model actually exists to point at. If none
+            # does, the capability column is far more likely to be empty than the whole
+            # catalogue to have lost PDF input, and an outage over missing metadata is
+            # the worse trade. That case warns and proceeds, like `_fallback_model`.
             if ClaudeModel.search_count([("pdf_supported", "=", True)]):
                 raise UserError(_(
                     "Company %(company)s is configured to use the Claude model "
@@ -131,7 +216,8 @@ class ClaudeClient(models.AbstractModel):
         if newest and newest.model_api_id:
             return newest.model_api_id
 
-        # Nothing synced yet (fresh database): try one sync before giving up.
+        # Nothing synced yet. Try once -- a fresh database has an API key but an empty table,
+        # and failing there would be a setup papercut rather than a real error.
         try:
             self.sync_models(company=company)
         except Exception as e:                            # noqa: BLE001 - reported below
@@ -146,7 +232,9 @@ class ClaudeClient(models.AbstractModel):
 
         raise UserError(_(
             "No Claude model is available for company %s. Set a default model in "
-            "Settings, or use \"Sync Models\" to fetch the current list from the API."
+            "Settings, or use \"Sync Models\" to fetch the current list from the API. "
+            "(This used to fall back to a hardcoded model id, which had gone stale — "
+            "the call would have failed at the API instead, with a less useful message.)"
         ) % company.name)
 
     @api.model
@@ -163,10 +251,27 @@ class ClaudeClient(models.AbstractModel):
     ):
         """Call Claude's messages API. See lib.claude_client.messages_create.
 
-        ``timeout`` (seconds) and ``requires_pdf`` are per-call on purpose, so one caller's
-        needs never change the behaviour of other callers sharing this client. ``None``
-        keeps the transport default of 120 s; ``requires_pdf`` limits model resolution to
-        models that accept PDF input.
+        ``timeout`` is a PER-CALL override of the transport's
+        ``DEFAULT_TIMEOUT`` (120 s), in seconds. It was added for AI invoice
+        import, whose calls send a whole PDF and ask a thinking model for a
+        long JSON answer — ~300 s rather than ~10 s.
+
+        🔴 It is per-call ON PURPOSE, and must stay that way. The obvious
+        alternative — raising ``DEFAULT_TIMEOUT``, or adding a company-level
+        setting the way ``claude_max_output_tokens`` works — would change the
+        behaviour of EVERY caller of this client, and fraud detection is one of
+        them. A fraud check that currently gives up after 120 s would start
+        holding its worker for five minutes instead, which is a different
+        product decision made by accident. ``None`` keeps the transport default,
+        so no existing caller moves.
+
+        ``requires_pdf`` says that this call sends a document, so the model must
+        be one that can read one. It is per-call for exactly the same reason:
+        it constrains what ``_resolve_model`` may choose for THIS caller, and a
+        caller that sends text passes nothing and resolves exactly as before.
+        See ``_fallback_model`` — the capability was synced and never read, which
+        is how an invoice prompt could end up aimed at a model that cannot see
+        the invoice.
         """
         company = company or self.env.company
         api_key = company.sudo().claude_api_key
@@ -219,8 +324,14 @@ class ClaudeClient(models.AbstractModel):
     def _pointers_at(self, claude_models):
         """Every stored record that points at one of `claude_models`, as plain dicts.
 
-        Walks `ir.model.fields` so that Many2one fields added by dependent modules are found
-        without this module depending on them.
+        🔴 19.0.1.3.0 asked whether archiving should be silent. It should not: a sync that quietly
+        takes away the model a company is configured to use is the same shape of silent
+        failure this change is about. So the sync names what it broke.
+
+        This walks `ir.model.fields` rather than importing anything, ON PURPOSE.
+        `goodahead_claude` does not depend on `goodahead_fraud_detection` and must not — but
+        `res.company.fraud_model_id` points here, and so will the next module that adds a
+        field. Asking the registry finds all of them, including fields that do not exist yet.
         """
         if not claude_models:
             return []
@@ -250,10 +361,11 @@ class ClaudeClient(models.AbstractModel):
 
     @api.model
     def _sync_models(self, company=None):
-        """`sync_models` with the detail the UI needs.
+        """`sync_models` with the detail the UI needs. Returns a dict; see `sync_models`.
 
-        Returns a dict: `synced` (int), `archived` / `restored` (model api ids) and
-        `pointers` (from `_pointers_at`, configuration now pointing at an archived model).
+        Keys: `synced` (int), `archived` / `restored` (lists of model api ids),
+        `pointers` (list of dicts from `_pointers_at`, describing configuration that now
+        points at an archived model).
         """
         company = company or self.env.company
         api_key = company.sudo().claude_api_key
@@ -263,8 +375,10 @@ class ClaudeClient(models.AbstractModel):
             )
 
         models_data = _api.list_models(api_key)
-        # active_test=False: otherwise the upsert misses archived rows and violates the
-        # unique constraint on `model_api_id`.
+        # 🔴 `active_test=False`, and this is not cosmetic. Once a row can be archived, an
+        # upsert that searches with the default active filter cannot SEE the archived row —
+        # it would take the `create` branch and hit the `model_api_id` UNIQUE constraint. The
+        # sync would then fail on exactly the models it was taught to handle.
         ClaudeModel = self.env["goodahead.claude.model"].sudo().with_context(active_test=False)
         seen = ClaudeModel.browse()
         restored = []
@@ -280,12 +394,15 @@ class ClaudeClient(models.AbstractModel):
                 "model_api_id": model_id,
                 "pdf_supported": bool(pdf_input.get("supported")),
                 "max_input_tokens": m.get("max_input_tokens", 0) or 0,
+                # Q3: stored so `_resolve_model` can order by recency rather than guess.
                 "created_at": self._parse_api_datetime(m.get("created_at")),
             }
             existing = ClaudeModel.search([("model_api_id", "=", model_id)], limit=1)
             if existing:
                 if not existing.active:
-                    # Listed again: restore it, so a partial response heals on the next sync.
+                    # The catalogue lists it again. Restore it, so one bad sync — a partial
+                    # response, a key scoped to fewer models — heals on the next run instead
+                    # of permanently costing the dropdown a model.
                     vals["active"] = True
                     restored.append(model_id)
                 existing.write(vals)
@@ -299,8 +416,9 @@ class ClaudeClient(models.AbstractModel):
         pointers = []
         if count:
             unlisted = ClaudeModel.search([("id", "not in", seen.ids)]).filtered("active")
-            # Guarded by `if count:` - an empty response is a failed sync, not the
-            # retirement of the whole catalogue.
+            # 🔴 `if count:` is the guard that matters. An empty or wholly unparseable
+            # response is a FAILED sync, not the retirement of the entire catalogue — without
+            # this, one bad response archives every model and takes the dropdown with it.
             if unlisted:
                 pointers = self._pointers_at(unlisted)
                 archived = unlisted.mapped("model_api_id")
@@ -331,7 +449,16 @@ class ClaudeClient(models.AbstractModel):
     def sync_models(self, company=None):
         """Fetch models from the API and mirror them onto goodahead.claude.model.
 
-        Returns the count of models stored (details are in `_sync_models`). Models the API
-        no longer lists are archived, never deleted, because configuration points at them.
+        Returns the count of models stored.
+
+        🔴 The return value is an int ON PURPOSE, unchanged from before 19.0.1.3.0. `_resolve_model`
+        and any caller outside this module only ever asked "did anything arrive"; widening
+        this to a dict would have been a silent contract change for them. The detail lives in
+        `_sync_models`, which this wraps.
+
+        19.0.1.3.0: the sync now RETIRES as well as adds. A model the API has stopped listing is
+        ARCHIVED, never deleted — `res.company.claude_default_model_id` and
+        `goodahead_fraud_detection`'s `fraud_model_id` point at these rows, and the foreign
+        key has to survive. See `goodahead.claude.model.active`.
         """
         return self._sync_models(company=company)["synced"]

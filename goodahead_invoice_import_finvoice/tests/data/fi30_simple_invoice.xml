@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="Finvoice.xsl" type="text/xsl"?>
+<!-- Invented fixture: every name, identifier, account and address is made up. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+    <SellerPostalAddressDetails>
+      <SellerStreetName>Esimerkkikatu 1</SellerStreetName>
+      <SellerTownName>Helsinki</SellerTownName>
+      <SellerPostCodeIdentifier>00100</SellerPostCodeIdentifier>
+      <CountryCode>FI</CountryCode>
+    </SellerPostalAddressDetails>
+  </SellerPartyDetails>
+  <SellerCommunicationDetails>
+    <SellerPhoneNumberIdentifier>+358 40 0000001</SellerPhoneNumberIdentifier>
+    <SellerEmailaddressIdentifier>myynti@example.test</SellerEmailaddressIdentifier>
+  </SellerCommunicationDetails>
+  <SellerInformationDetails>
+    <SellerPhoneNumber>+358 9 0000000</SellerPhoneNumber>
+    <SellerCommonEmailaddressIdentifier>laskutus@example.test</SellerCommonEmailaddressIdentifier>
+    <SellerWebaddressIdentifier>www.example.test</SellerWebaddressIdentifier>
+    <SellerAccountDetails>
+      <SellerAccountID IdentificationSchemeName="IBAN">FI1612345600000002</SellerAccountID>
+      <SellerBic IdentificationSchemeName="BIC">EXMPFIHH</SellerBic>
+    </SellerAccountDetails>
+  </SellerInformationDetails>
+  <BuyerPartyDetails>
+    <BuyerPartyIdentifier>0000005-1</BuyerPartyIdentifier>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+    <BuyerOrganisationTaxCode>FI00000051</BuyerOrganisationTaxCode>
+    <BuyerPostalAddressDetails>
+      <BuyerStreetName>Ostajantie 2</BuyerStreetName>
+      <BuyerTownName>Espoo</BuyerTownName>
+      <BuyerPostCodeIdentifier>02100</BuyerPostCodeIdentifier>
+      <CountryCode>FI</CountryCode>
+    </BuyerPostalAddressDetails>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode CodeListAgencyIdentifier="SPY">INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>10045</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261115</InvoiceDate>
+    <SellerReferenceIdentifier>SO-7781</SellerReferenceIdentifier>
+    <OrderIdentifier>PO-2026-118</OrderIdentifier>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">360,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">91,80</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">451,80</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">360,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatCode>S</VatCode>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">91,80</VatRateAmount>
+    </VatSpecificationDetails>
+    <InvoiceFreeText>Kiitos tilauksesta.</InvoiceFreeText>
+    <PaymentTermsDetails>
+      <PaymentTermsFreeText>14 pv netto</PaymentTermsFreeText>
+      <InvoiceDueDate Format="CCYYMMDD">20261129</InvoiceDueDate>
+    </PaymentTermsDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-001</ArticleIdentifier>
+    <ArticleName>Toimistotuoli</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">2</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">120,00</UnitPriceAmount>
+    <RowFreeText>Väri musta</RowFreeText>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatCode>S</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">61,20</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">240,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">301,20</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-002</ArticleIdentifier>
+    <ArticleName>Asennustyö</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="h">1,5</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">80,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">30,60</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">120,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">150,60</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261115</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">10001235</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">451,80</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261129</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

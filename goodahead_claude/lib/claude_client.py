@@ -10,8 +10,17 @@ _logger = logging.getLogger(__name__)
 API_URL = "https://api.anthropic.com/v1/messages"
 MODELS_URL = "https://api.anthropic.com/v1/models"
 API_VERSION = "2023-06-01"
-# Last resort for direct callers of this library only; the ORM client resolves the default
-# from synced models. Being a literal, it will go stale as models are retired.
+# 🔴 Q3, 2026-08-28 — LAST RESORT ONLY. The ORM layer should never reach this.
+#
+# This was `claude-sonnet-4-20250514`, which is retired: every call that did not name a model
+# was aimed at an id the API no longer serves, and the failure is a 404 at call time that no
+# gate can see. `goodahead.claude.client._resolve_model()` now resolves the default from the
+# models FETCHED into `goodahead.claude.model` and raises a useful error if it cannot, so this
+# constant only applies to direct `lib.claude_client` callers that bypass the ORM entirely.
+#
+# ⚠️ It is a literal, so it will go stale again — that is the nature of the thing, and the
+# reason the ORM path no longer depends on it. Current model ids carry NO date suffix; do not
+# "restore" one.
 DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 DEFAULT_TIMEOUT = 120
@@ -32,7 +41,11 @@ def _api_headers(api_key):
 def _wrap_static_system(system):
     """Wrap a plain string `system` prompt as a single cacheable text block.
 
-    None and lists (already structured) are returned unchanged.
+    Accepts:
+    * None -> returned unchanged
+    * str -> wrapped as [{"type": "text", "text": str, "cache_control": {...}}]
+    * list -> returned unchanged (caller already in structured form;
+      cache_control should be added on the relevant block)
     """
     if system is None or isinstance(system, list):
         return system
@@ -56,11 +69,29 @@ def messages_create(
     cache_static_system=True,
     timeout=DEFAULT_TIMEOUT,
 ):
-    """Call the Claude messages API and return the parsed JSON response.
+    """Call the Claude messages API.
 
-    A plain-string `system` prompt is wrapped as a cacheable block when
-    `cache_static_system` is True; a list of blocks is sent as is.
-    Raises ClaudeAPIError on transport errors or non-200 responses.
+    Args:
+        api_key: Anthropic API key.
+        model: model id (e.g. "claude-opus-5"). Current ids carry no date suffix.
+        messages: list of {"role": "user"|"assistant", "content": ...} dicts.
+        system: optional system prompt. May be:
+            * str: a plain system prompt — automatically wrapped as a single
+              cacheable text block when `cache_static_system=True`.
+            * list: pre-structured list of content blocks; the caller controls
+              `cache_control` placement.
+            * None: omitted.
+        max_tokens: model output limit (defaults to DEFAULT_MAX_OUTPUT_TOKENS).
+        cache_static_system: if True (default), a plain-string `system` prompt
+            is wrapped with ephemeral cache_control. Set to False to disable.
+        timeout: request timeout in seconds.
+
+    Returns:
+        Parsed JSON response dict from the API. The caller is responsible for
+        extracting text content / usage / stop_reason.
+
+    Raises:
+        ClaudeAPIError on transport error or non-200 response.
     """
     if not api_key:
         raise ClaudeAPIError("Claude API key is not configured")
@@ -157,7 +188,10 @@ def extract_text(response):
 
 
 def extract_usage(response):
-    """Return token usage, including prompt-cache fields, from a `messages` response."""
+    """Return token usage from a Claude `messages` response.
+
+    Includes prompt-cache fields if present.
+    """
     usage = response.get("usage", {}) or {}
     return {
         "input_tokens": usage.get("input_tokens", 0),

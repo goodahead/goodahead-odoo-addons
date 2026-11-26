@@ -1,0 +1,25 @@
+// Copyright 2026 Goodahead Oy
+// License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+// The candidate cards under the Vendor field on a bill.
+//
+// 🔴 ONE RULE, AND IT IS HERE BECAUSE OF A MEASURED CORE DEFAULT RATHER THAN A
+// TASTE. 19.0 gives every record of an UNGROUPED kanban a fixed width —
+// `--KanbanRecord-width: 320px`, declared on `.o_kanban_renderer` itself
+// (`web/static/src/views/kanban/kanban_controller.scss:98`, consumed at :354)
+// — and then lets it `flex-grow`. So the same three candidates render as one
+// card per row in a narrow form column and as two columns on a wide screen,
+// which is exactly the cramped grid this stage exists to remove.
+//
+// ⚠️ IT CANNOT BE DONE FROM THE ARCH. A CSS custom property set on an ancestor
+// (an inline `style` on the wrapping `<div>`, say) loses to the one core
+// redeclares on `.o_kanban_renderer`, so the variable has to be overridden on
+// that element. `<kanban class="…">` lands on the x2many wrapper
+// (`x2many_field.js` → `computeViewClassName`), which is the parent of the
+// renderer — hence the descendant selector below.
+//
+// NOT a widget and NOT an OWL template: a duplicate `t-name` aborts the whole
+// `web.assets_web` bundle silently, which is why a duplicate-template check
+// exists. A stylesheet cannot do that.
+.o_ai_vendor_candidate_cards .o_kanban_renderer {
+    --KanbanRecord-width: 100%;
+}

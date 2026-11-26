@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented RetrieveTransferID answer -->
+<Response version="1.0">
+ <Status>OK</Status>
+ <StatusCode>5000</StatusCode>
+ <FreeText language="en">OK</FreeText>
+ <Content>
+  <Group>
+   <Value type="TransferID">0a0a0a0a-1b1b-4c2c-8d3d-000000000001</Value>
+   <Value type="TransferKey">0f0f0f0f-2e2e-4d4d-9c9c-000000000001</Value>
+   <Value type="UniqueCompanyID">0c0c0c0c-3b3b-4a4a-8e8e-000000000001</Value>
+  </Group>
+ </Content>
+</Response>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented ListInvoiceZIPs (list2) answer: one package -->
+<Response>
+ <Status>OK</Status>
+ <StatusCode>2700</StatusCode>
+ <Content>
+  <Group>
+   <Value type="DocumentID">1001</Value>
+   <Value type="DueDate">20260315</Value>
+   <Value type="SellerReference">ZZ-REF-1</Value>
+   <Value type="SenderVAT">FI00000019</Value>
+   <Value type="DocumentDate">20260301</Value>
+   <Value type="PaymentStatus">NOTPAID</Value>
+   <Value type="PaymentReference">1009</Value>
+   <Value type="SenderName">ZZ Seller Oy</Value>
+   <Value type="TransferStatus">NEW</Value>
+   <Value type="ReceiverVAT">FI00000035</Value>
+   <Value type="DocumentName">invoice.xml</Value>
+   <Value type="ImageName">zz-invoice-0001.pdf</Value>
+   <Value type="AmountToPay">64.50</Value>
+   <Value type="ReceiverId">0000003-5</Value>
+   <Value type="CreatedDate">20260301</Value>
+   <Value type="ApprovalStatus">NEUTRAL</Value>
+   <Value type="BankAccount">FI0000000000000000</Value>
+   <Value type="OrderReference">ZZ-ORDER-1</Value>
+   <Value type="Currency">EUR</Value>
+   <Value type="ReceiverName">Example Receiver Oy</Value>
+   <Value type="StorageKey">100200300400</Value>
+   <Value type="StorageID">0d0d0d0d-4c4c-4b4b-8a8a-000000000001</Value>
+   <Value type="StorageStatus">UNRECEIVED</Value>
+   <Value type="DocumentOrigin">eInvoice</Value>
+  </Group>
+ </Content>
+</Response>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented SendInvoiceZIP answer: the document refused, Status OK with a RejectedDocument group -->
+<Response version="1.0">
+ <Status>OK</Status>
+ <StatusCode>1000</StatusCode>
+ <FreeText language="en">OK</FreeText>
+ <Content>
+  <Group>
+   <Value type="BatchID">00000000-aaaa-bbbb-cccc-000000000003</Value>
+   <Value type="Saldo">249</Value>
+   <Value type="CostInCredits">0</Value>
+   <Value type="NetworkedInvoices">0</Value>
+   <Value type="Letters">0</Value>
+   <Value type="LetterPages">0</Value>
+   <Value type="RejectedDocument">1</Value>
+  </Group>
+  <Group>
+   <Value type="RejectedDocumentID">ZZ-2003</Value>
+   <Value type="ValidateText">Document InvoiceID ZZ-2003 Error: SellerOrganisationName is missing</Value>
+   <Value type="ValidateText:fi">Dokumentti ZZ-2003 Virhe: SellerOrganisationName puuttuu</Value>
+  </Group>
+ </Content>
+</Response>

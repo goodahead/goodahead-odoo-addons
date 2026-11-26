@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- A company received by the APIX receiving add-on: no fetch, no re-fetch here. -->
+    <record id="view_apix_backend_form_goodahead_receiving" model="ir.ui.view">
+        <field name="name">apix.backend.form.goodahead.receiving</field>
+        <field name="model">apix.backend</field>
+        <field name="inherit_id" ref="connector_apix.view_apix_backend_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_einvoice_fetch']" position="attributes">
+                <attribute name="invisible">state != 'confirmed' or goodahead_receiving_live</attribute>
+            </xpath>
+            <xpath expr="//header/button[@name='action_einvoice_refetch']" position="attributes">
+                <attribute name="invisible">state != 'confirmed' or goodahead_receiving_live</attribute>
+            </xpath>
+            <xpath expr="//header" position="after">
+                <field name="goodahead_receiving_live" invisible="1"/>
+                <div class="alert alert-info mb-0" role="status" invisible="not goodahead_receiving_live">
+                    This company's e-invoices are received by the APIX receiving add-on:
+                    fetching and re-fetching here are paused. Switch back in the migration tool.
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

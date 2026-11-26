@@ -1,0 +1,96 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": "0000001-9",
+    "vat": "FI00000019",
+    "street": "Testitie 2",
+    "zip": "33100",
+    "city": "Tampere",
+    "country_code": "FI",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "SEK",
+    "original_number": null,
+    "payment_reference": "10001235",
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 300.0,
+      "tax": 0.0,
+      "total": 300.0,
+      "rounding": 0.0,
+      "rows": 300.0
+    },
+    "type_code_un": "380"
+  },
+  "lines": [
+    {
+      "code": "ZZ-E",
+      "name": "Exempt service",
+      "description": null,
+      "quantity": 1,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 300.0,
+      "tax_percent": 0.0,
+      "tax_code": "E",
+      "untaxed": 300.0,
+      "tax": 0.0,
+      "total": 300.0
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 0.0,
+      "base": 300.0,
+      "amount": 0.0,
+      "code": "E",
+      "reason_lines": [
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+        "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      ],
+      "exemption_code": "VATEX-EU-132-1A"
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "10001235",
+    "amount": 300.0,
+    "due_date": "2026-12-09",
+    "payment_means_code": "30"
+  },
+  "_comment": "Invented fixture: three 70-character reason lines and a non-euro invoice (AC-25)."
+}

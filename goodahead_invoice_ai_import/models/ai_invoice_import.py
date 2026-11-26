@@ -1,78 +1,39 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
 import json
 import logging
 
 from markupsafe import Markup
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+
+from odoo.addons.goodahead_invoice_import.lib.import_source import (
+    DEFAULT_POLICY,
+    SourceReader,
+)
 
 _logger = logging.getLogger(__name__)
 
-
-class _AiImportDecodeError(Exception):
-    """Internal signal to roll back the create-and-decode savepoint on a UBL
-    decode error (distinct from a raw DB exception, for a clearer message)."""
+#: The key of the AI reader in the core's source dispatch.
+AI_READER = "ai"
 
 
-# Dedicated queue_job channel for the slow Claude extraction jobs. Give it a
-# small capacity in the deploy config (e.g. `root:N,root.ai_import:1`) so these
-# jobs cannot starve the worker pool.
-AI_IMPORT_CHANNEL = "root.ai_import"
+class GoodaheadInvoiceImport(models.Model):
+    """The AI source of the import record: mail intake of PDFs, the Claude read,
+    and its token usage. The record itself, its lifecycle and everything after
+    the read live in `goodahead_invoice_import` (core/source split). Since the source dispatch the
+    core routes mails and jobs here through the ``ai`` reader key."""
 
+    _inherit = "goodahead.invoice.import"
 
-class AiInvoiceImport(models.Model):
-    _name = "ai.invoice.import"
-    _inherit = ["mail.thread"]
-    _description = "AI Invoice Import"
-    _order = "create_date desc"
-
-    name = fields.Char(string="Filename", readonly=True)
-    state = fields.Selection(
-        [
-            ("draft", "Draft"),
-            ("processing", "Processing"),
-            ("done", "Done"),
-            ("failed", "Failed"),
-        ],
-        default="draft",
-        readonly=True,
-    )
-    company_id = fields.Many2one(
-        "res.company",
-        required=True,
-        default=lambda self: self.env.company,
-        readonly=True,
-    )
-    source_email = fields.Char(readonly=True)
-    journal_id = fields.Many2one(
-        "account.journal",
-        string="Journal",
-        readonly=True,
-        help="The purchase journal the manual upload targeted. Empty for the "
-        "email path, which falls back to the company's first purchase journal.",
-    )
-    upload_move_type = fields.Char(
-        readonly=True,
-        help="The move type requested by the manual upload (e.g. in_invoice / "
-        "in_refund). Empty for the email path (defaults to in_invoice).",
-    )
-    pdf_attachment_id = fields.Many2one("ir.attachment", string="PDF", readonly=True)
-    xml_attachment_id = fields.Many2one(
-        "ir.attachment", string="Generated XML", readonly=True
-    )
-    extraction_data = fields.Text(
-        string="Extraction JSON",
-        help="The JSON Claude extracted. Stored even on a failed extraction so "
-        "you can see what was parsed, fix it (e.g. add a missing date) and "
-        "re-import without calling the AI again. Editable while failed.",
+    reader = fields.Selection(
+        selection_add=[(AI_READER, "PDF read by AI")],
+        ondelete={AI_READER: "set null"},
     )
     extraction_model = fields.Char(readonly=True)
     input_tokens = fields.Integer(readonly=True)
     output_tokens = fields.Integer(readonly=True)
-    move_id = fields.Many2one("account.move", string="Vendor Bill", readonly=True)
-    error_message = fields.Text(readonly=True)
 
     @api.model
     def _ai_max_pdfs_per_message(self):
@@ -88,8 +49,10 @@ class AiInvoiceImport(models.Model):
     def _ai_max_pdf_bytes(self):
         """Largest PDF that will be sent for extraction.
 
-        A PDF is base64-encoded into the request, so the payload is about a third
-        larger.
+        A PDF is base64-encoded into the request, so the API payload is about a
+        third larger again. The default is deliberately generous for a vendor
+        bill (which is a handful of pages) and still far below anything that
+        would be a scanned catalogue.
         """
         return int(
             self.env["ir.config_parameter"]
@@ -97,51 +60,125 @@ class AiInvoiceImport(models.Model):
             .get_param("goodahead_invoice_ai_import.max_pdf_bytes", str(15 * 1024 * 1024))
         )
 
+    # ------------------------------------------------------------------
+    # The AI reader in the core's source dispatch
+    # ------------------------------------------------------------------
+
     @api.model
-    def message_new(self, msg_dict, custom_values=None):
-        """Create import records from inbound email with PDF attachments.
+    def _import_readers(self):
+        readers = super()._import_readers()
+        # Asked last: any structured reader takes a file before the paid one.
+        readers[AI_READER] = SourceReader(AI_READER, priority=100, policy=DEFAULT_POLICY)
+        return readers
 
-        The company comes from the alias's `alias_defaults` (passed here as
-        ``custom_values``), not from the incoming mail server, which has no
-        company field; `env.company` here is the scheduler user's company for
-        every message. In a multi-company database give each company its own
-        alias with `{'company_id': <id>}`. When the alias names no company, a
-        warning is logged and noted on the record.
-        """
-        defaults = {
-            "source_email": msg_dict.get("email_from", ""),
-        }
-        if custom_values:
-            defaults.update(custom_values)
+    @api.model
+    def _source_accepts_attachment(self, source_key, attachment):
+        if source_key != AI_READER:
+            return super()._source_accepts_attachment(source_key, attachment)
+        name = attachment[0] or ""
+        return name.lower().endswith(".pdf")
 
-        alias_named_company = bool(defaults.get("company_id"))
-        if not alias_named_company:
-            _logger.warning(
-                "AI invoice import: the alias that received mail from %s names "
-                "no company, so the bill will be filed in %s. With more than "
-                "one company this is how bills reach the wrong chart of "
-                "accounts — give each company its own alias and set "
-                "`alias_defaults` to {'company_id': <id>}. See docs/SETUP.md.",
-                msg_dict.get("email_from", "?"),
-                self.env.company.display_name,
+    def _source_claims_record(self, source_key):
+        """A record from before readers were stored (or made by hand) on the
+        AI's own channels is the AI's, as it always was."""
+        if source_key != AI_READER:
+            return super()._source_claims_record(source_key)
+        return self.source in ("upload", "email")
+
+    def _source_read(self, source_key):
+        if source_key != AI_READER:
+            return super()._source_read(source_key)
+        return self._ai_read_and_finalize()
+
+    @api.model
+    def _source_receive_mail(self, source_key, files, companions, company,
+                             values, msg_dict):
+        if source_key != AI_READER:
+            return super()._source_receive_mail(
+                source_key, files, companions, company, values, msg_dict
             )
+        return self._ai_receive_mail(files, company, values, msg_dict)
 
-        attachments = msg_dict.get("attachments", [])
+    @api.model
+    def _ai_receive_mail(self, files, company, values, msg_dict):
+        """One import record per PDF of an inbound mail, enqueued.
+
+        The company was decided by the core's mail intake — by the alias, see
+        the note below on why that is the only thing that can decide it.
+
+        🔴 WHICH COMPANY AN EMAILED BILL BELONGS TO IS DECIDED BY THE ALIAS —
+        NOT BY THE INCOMING MAIL SERVER. This was checked rather than assumed,
+        because the two sound interchangeable and are not:
+
+        * `fetchmail.server` has **no company field at all** (confirmed in
+          `addons/mail/models/fetchmail.py` at the deployed revision, and in the
+          database: `fetchmail_server` has no company column). It puts only
+          `default_fetchmail_server_id` on the context. So having one incoming
+          server per company decides which MAILBOX is collected, which is real
+          and useful, and decides nothing about which company the record lands
+          in.
+        * `env.company` inside this method is therefore the scheduler user's
+          company — the SAME one for every message, whichever mailbox it came
+          from.
+
+        This database already answers it the right way for the native importer:
+        core's own journal aliases carry the company in `alias_defaults` —
+        `vendor-bills` has `{'move_type': 'in_invoice', 'company_id': 1, ...}`
+        and `vendor-bills-beta-inc` has `company_id: 2`. That second alias
+        exists precisely because one address cannot serve two companies.
+
+        Alpha LLC and Beta Inc. have DIFFERENT CHARTS OF ACCOUNTS,
+        and a bill imported into the wrong company does NOT fail: that company's
+        accounts resolve, the shared expense categories resolve, the bill posts,
+        and nothing says it is in the wrong books. It is the quietest possible
+        way to get this wrong, and it surfaces at reconciliation.
+
+        So: one alias per company, each with its own `company_id` in
+        `alias_defaults`, which core passes here as `custom_values` and which
+        `defaults.update(custom_values)` below applies. `docs/SETUP.md` §1
+        spells it out, because the aliases are created by hand.
+
+        ⚠️ TO BE PRECISE ABOUT WHAT CHANGED HERE, because the distinction
+        matters to anyone judging the risk: that pass-through ALREADY WORKED —
+        `defaults.update(custom_values)` predates this release. A company-scoped
+        alias has always filed into its own company. What was missing was any
+        signal when an alias does NOT name one, and that is the configuration
+        that misfiles. So the change below is VISIBILITY, not routing: a warning
+        in the log and a note on the record saying which company it landed in
+        and whether that was the alias's decision or a fallback.
+
+        Checked on a test database with two aliases and routed test mail:
+
+            alias          env.company in message_new   custom_values      record
+            zzprobe-alpha     Alpha LLC               {'company_id': 1}  Alpha
+            zzprobe-beta    Alpha LLC  <-- same!    {'company_id': 2}  Beta
+
+        The middle column is the point: `env.company` is Alpha for BOTH,
+        so the default is wrong for one of them and only `alias_defaults` saves
+        it. Since the source dispatch the core's `message_new` applies it for every reader,
+        logs the company-less alias and states the landing company on the
+        mail's first record.
+        """
         pdf_attachments = []
         oversized = []
-        for att in attachments:
-            att_name = att[0] if att else ""
-            att_content = att[1] if len(att) > 1 else b""
-            if not att_name or not att_name.lower().endswith(".pdf"):
-                continue
+        for att_name, att_content, _mimetype in files:
             if len(att_content or b"") > self._ai_max_pdf_bytes():
                 oversized.append(att_name)
                 continue
             pdf_attachments.append((att_name, att_content))
 
-        # Anyone who can mail the alias triggers a paid Claude call per PDF, and
-        # `From` headers are forgeable, so the per-message count and size limits
-        # are enforced in code regardless of alias configuration.
+        # 🔴 THE INBOUND PATH IS AN EXTERNALLY-TRIGGERED, BILLED SURFACE.
+        #
+        # The module ships no alias (each installation creates one by hand), but
+        # whatever alias is pointed at this model, anybody who can send mail to
+        # it causes a paid Claude call per PDF, and a `From` header is forgeable
+        # — `alias_contact="partners"` is not authentication. These two limits
+        # therefore live in the CODE, not in the alias configuration, so they
+        # apply however the alias is created and whoever creates it.
+        #
+        # They are deliberately blunt. The job is to bound the damage of one
+        # message, not to decide policy: a cap on how many PDFs one email may
+        # enqueue, and a size above which a PDF is not sent at all.
         if len(pdf_attachments) > self._ai_max_pdfs_per_message():
             limit = self._ai_max_pdfs_per_message()
             skipped = [name for name, _content in pdf_attachments[limit:]]
@@ -156,84 +193,45 @@ class AiInvoiceImport(models.Model):
             )
             oversized.extend(skipped)
 
+        values = dict(values or {}, reader=AI_READER)
         if not pdf_attachments:
-            if oversized:
-                record = super().message_new(msg_dict, custom_values=defaults)
-                record.write(
-                    {
-                        "name": msg_dict.get("subject", "Attachment refused"),
-                        "state": "failed",
-                        "error_message": (
-                            "No PDF was imported from this email. Refused: "
-                            + ", ".join(oversized)
-                            + ". A PDF above %s MB, or beyond the %s-per-message "
-                            "limit, is not sent for extraction."
-                            % (
-                                self._ai_max_pdf_bytes() // (1024 * 1024),
-                                self._ai_max_pdfs_per_message(),
-                            )
-                        ),
-                    }
-                )
-                return record
-            record = super().message_new(msg_dict, custom_values=defaults)
-            record.write(
-                {
-                    "name": msg_dict.get("subject", "No PDF"),
-                    "state": "failed",
-                    "error_message": "No PDF attachment found in email",
-                }
+            # Every PDF refused: one failed record that names them (the
+            # refused files themselves are not kept, as before).
+            record = self._create_for_source(
+                "email",
+                company,
+                [],
+                dict(values, name=msg_dict.get("subject") or "Attachment refused"),
+            )
+            record._fail(
+                "ai_import.attachment_refused",
+                "No PDF was imported from this email. Refused: "
+                + ", ".join(oversized)
+                + ". A PDF above %s MB, or beyond the %s-per-message "
+                "limit, is not sent for extraction."
+                % (
+                    self._ai_max_pdf_bytes() // (1024 * 1024),
+                    self._ai_max_pdfs_per_message(),
+                ),
             )
             return record
 
-        first_record = None
+        records = self.browse()
         for att_name, att_content in pdf_attachments:
-            defaults["name"] = att_name
-            record = super().message_new(msg_dict, custom_values=defaults)
-
-            attachment = self.env["ir.attachment"].create(
-                {
-                    "name": att_name,
-                    "raw": att_content,
-                    "mimetype": "application/pdf",
-                    "res_model": self._name,
-                    "res_id": record.id,
-                }
+            record = self._create_for_source(
+                "email",
+                company,
+                [(att_name, att_content, "application/pdf")],
+                dict(values, name=att_name),
             )
-            record.pdf_attachment_id = attachment
-            record.with_delay(
-                description=f"AI Invoice Import: {att_name}",
-                identity_key=f"ai_invoice_import:{record.id}",
-                channel=AI_IMPORT_CHANNEL,
-            )._process_import()
-
-            if not first_record:
-                first_record = record
-
-        # State the company on the record, and flag a fallback choice: a bill
-        # filed in the wrong company posts without any error.
-        if first_record:
-            if alias_named_company:
-                body = _(
-                    "Received by email and filed under %(company)s, as set by "
-                    "the alias.",
-                    company=first_record.company_id.display_name,
-                )
-            else:
-                body = _(
-                    "Received by email and filed under %(company)s. The alias "
-                    "that received it names no company, so this is a fallback, "
-                    "not a decision — with more than one chart of accounts, give "
-                    "each company its own alias and set its Default Values to "
-                    "{'company_id': <id>}. The incoming mail server does not "
-                    "decide this.",
-                    company=first_record.company_id.display_name,
-                )
-            first_record.message_post(body=Markup("<p>%s</p>") % body)
+            record._enqueue_import(f"AI Invoice Import: {att_name}")
+            records |= record
+        first_record = records[:1]
 
         if oversized and first_record:
-            # Record attachments that were not imported, so no bill goes missing
-            # silently.
+            # Say on the record what the email contained and did NOT import.
+            # Silently dropping an attachment from a vendor's email is how a
+            # bill goes missing without anybody knowing there was one.
             first_record.message_post(
                 body=Markup("<p>%s</p>")
                 % _(
@@ -243,118 +241,21 @@ class AiInvoiceImport(models.Model):
                 )
             )
 
-        return first_record
+        return records
 
-    @api.model
-    def _enqueue_from_attachment(self, attachment, company, journal=None,
-                                 move_type=None):
-        """Create an import record from a manually-uploaded PDF and enqueue it on
-        the same queue the email path uses. Returns the created record.
+    def _ai_read_and_finalize(self):
+        """The Claude reader (`_source_read` for ``ai``): key check, PDF
+        check, the paid extraction call, then `_finalize_import`.
 
-        ``journal``/``move_type`` capture the journal (and move type) the upload
-        targeted, so finalization builds the bill on the SAME journal the user
-        chose instead of the company's first purchase journal. The uploaded
-        ``ir.attachment`` (created client-side with no parent) is reparented onto
-        the new import record so it is the record's PDF.
-        """
-        record = self.create(
-            {
-                "name": attachment.name or "upload.pdf",
-                "company_id": company.id,
-                "journal_id": journal.id if journal else False,
-                "upload_move_type": move_type or False,
-            }
-        )
-        attachment.write({"res_model": self._name, "res_id": record.id})
-        record.pdf_attachment_id = attachment
-        record.with_delay(
-            description=f"AI Invoice Import: {record.name}",
-            identity_key=f"ai_invoice_import:{record.id}",
-            channel=AI_IMPORT_CHANNEL,
-        )._process_import()
-        return record
-
-    def _action_view_imports(self):
-        """Return a window action showing this import set (form for one, list for
-        many) — used as the manual-upload button's result."""
-        action = {
-            "type": "ir.actions.act_window",
-            "name": _("AI Invoice Imports"),
-            "res_model": self._name,
-            "context": dict(self.env.context),
-        }
-        if len(self) == 1:
-            action.update(
-                {
-                    "view_mode": "form",
-                    "views": [(False, "form")],
-                    "res_id": self.id,
-                }
-            )
-        else:
-            action.update(
-                {
-                    "view_mode": "list,form",
-                    "views": [(False, "list"), (False, "form")],
-                    "domain": [("id", "in", self.ids)],
-                }
-            )
-        return action
-
-    def action_retry(self):
-        """Manual retry button — re-extract (and re-bill) a failed import.
-
-        Restricted to ``failed`` records: retrying while a job is still
-        ``processing`` would enqueue a second job and double-bill Claude.
-        """
-        self.ensure_one()
-        if self.move_id:
-            raise UserError(
-                _(
-                    "A vendor bill (%s) is already linked to this import; retry "
-                    "is blocked to avoid creating a duplicate bill."
-                )
-                % self.move_id.display_name
-            )
-        if self.state != "failed":
-            raise UserError(
-                _("Only failed imports can be retried (this one is '%s').")
-                % self.state
-            )
-        self.write({"state": "draft", "error_message": False})
-        self.with_delay(
-            description=f"AI Invoice Import (retry): {self.name}",
-            identity_key=f"ai_invoice_import:{self.id}",
-            channel=AI_IMPORT_CHANNEL,
-        )._process_import()
-
-    def _process_import(self):
-        """Main import pipeline — called via queue_job.
-
-        Runs in a single queue_job transaction and must not commit: a mid-job
-        commit makes the job's final write hit a serialization error, which
-        queue_job postpones without counting retries, so the paid call would
-        repeat indefinitely. Failures return "FAILED" so the job is not retried.
-        """
-        self.ensure_one()
-
-        # Never reprocess a finished record or one that already produced a bill.
-        # This check must precede the core-profile check, which writes `failed`.
-        if self.state == "done" or self.move_id:
-            return "OK: already processed"
-
-        # Refuse before the paid call on an unsupported core, where the
-        # vendor-matching hooks would silently do nothing. The refusal is
-        # recorded on the record so it can be retried once the core is fixed.
-        try:
-            self.env["account.move"]._ai_assert_core_profile()
-        except UserError as e:
-            self._fail(str(e))
-            return f"FAILED: {e}"
-
+        🔴 NOT AN OVERRIDE OF `_import_read_and_finalize` ANY MORE.
+        That override called no ``super()``, so with the Finvoice add-on also
+        installed, which reader a record got depended on load order. The core
+        now dispatches on the record's ``reader``."""
         company = self.company_id
-        # The key field is restricted to `base.group_system`; only its presence
-        # is tested here.
+        # `.sudo()` for the same reason as in account_journal: the key is
+        # `groups="base.group_system"` and a queue_job runs as whoever enqueued
+        # it. Only the presence of a key is tested; the value stays inside the
+        # client.
         if not company.sudo().claude_api_key:
             self._fail("Claude API key is not configured")
             return "FAILED: No API key"
@@ -365,18 +266,22 @@ class AiInvoiceImport(models.Model):
 
         pdf_bytes = self.pdf_attachment_id.raw
         AccountMove = self.env["account.move"]
-        self.state = "processing"
+        # No stored "processing": written inside this job's one
+        # transaction it was never seen by anybody; the record shows
+        # processing through its job instead.
 
-        # Step 1: Claude extraction + UBL generation. Claude has been billed, so
-        # any error is terminal: return FAILED, never retry.
+        # Step 1: Claude extraction + UBL generation (shared method). Catch broadly
+        # — Claude has been billed, so ANY error here (typed or unexpected) must be
+        # terminal: return FAILED so the job is marked done, never retried/re-billed.
         try:
             ai_result = AccountMove._ai_extract_and_generate_ubl(pdf_bytes, company)
         except Exception as e:
             _logger.exception(
                 "AI extraction/UBL generation failed for import %s", self.id
             )
-            # Keep whatever Claude parsed so it can be fixed and re-imported
-            # without a new API call.
+            # Persist whatever Claude parsed (a validation error carries the JSON
+            # on the exception) so it is visible and can be fixed + re-imported
+            # WITHOUT a new API call. Safe: extraction is external, cursor is clean.
             extra = {}
             partial = getattr(e, "data", None)
             if partial is not None:
@@ -388,199 +293,58 @@ class AiInvoiceImport(models.Model):
 
         return self._finalize_import(ai_result)
 
-    def _finalize_import(self, ai_result):
-        """Steps 2-4: persist the extraction, create the vendor bill, post-process.
-
-        Shared by the Claude path (_process_import) and the re-import-from-JSON
-        recovery action (which reuses stored, possibly hand-fixed, data with no new
-        API call). Returns the OK/FAILED result string.
-        """
-        self.ensure_one()
-        company = self.company_id
-        AccountMove = self.env["account.move"]
-        extracted = ai_result["extracted"]
-        usage = ai_result["usage"]
-        xml_bytes = ai_result["xml_bytes"]
-
-        # Before persisting: a hand-edited extraction from a re-import is not
-        # re-validated, so drop a currency-inferred marker that no longer holds.
-        AccountMove._ai_surviving_currency_marker(extracted)
-
-        # Persist the extraction before the savepoint so it survives a rollback.
-        extraction_vals = {
-            "extraction_data": json.dumps(extracted, indent=2, ensure_ascii=False),
-            "extraction_model": ai_result["model_name"],
-            "input_tokens": usage["input_tokens"],
-            "output_tokens": usage["output_tokens"],
-        }
-        self.write(extraction_vals)
-
-        # Use the journal the upload targeted; the email path falls back to the
-        # company's first purchase journal.
-        journal = self.journal_id
-        if not journal:
-            journal = self.env["account.journal"].search(
-                [("type", "=", "purchase"), ("company_id", "=", company.id)],
-                limit=1,
-            )
-        if not journal:
-            self._fail("No purchase journal found")
-            return "FAILED: No purchase journal"
-        move_type = self.upload_move_type or "in_invoice"
-
-        # Steps 2-3: create a bill and decode the UBL directly into it (not via
-        # journal._create_document_from_attachment, whose internal commit fails
-        # in the queue-job context). A savepoint, not cr.rollback(), keeps the
-        # caller's work intact on the interactive re-import path.
-        xml_name = (
-            self.name.rsplit(".", 1)[0] + ".xml" if self.name else "invoice.xml"
+    def _import_extraction_vals(self, ai_result, extracted):
+        vals = super()._import_extraction_vals(ai_result, extracted)
+        usage = ai_result.get("usage")
+        if usage is None:
+            # A structured source (core/source split): no AI reading, so no AI
+            # usage is recorded.
+            return vals
+        vals.update(
+            {
+                "extraction_model": ai_result["model_name"],
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+            }
         )
-        try:
-            with self.env.cr.savepoint():
-                xml_attachment = self.env["ir.attachment"].create(
-                    {
-                        "name": xml_name,
-                        "raw": xml_bytes,
-                        "mimetype": "application/xml",
-                        "res_model": self._name,
-                        "res_id": self.id,
-                    }
-                )
-                move = AccountMove.create(
-                    {"move_type": move_type, "journal_id": journal.id}
-                )
+        return vals
 
-                # Make the vendor's PDF the main attachment before decoding.
-                # Otherwise core's `_import_attachments` renders a substitute
-                # "Generated by Odoo" PDF and claims the slot with force=True;
-                # an existing main attachment makes core skip that. The
-                # `disable_pdf_in_xml` parameter is a global backstop for other
-                # paths; keep both.
-                pdf_on_move = self.pdf_attachment_id.copy(
-                    {
-                        "res_model": "account.move",
-                        "res_id": move.id,
-                    }
-                )
-                move._message_set_main_attachment_id(pdf_on_move)
-
-                error = AccountMove._ai_decode_ubl_into_move(
-                    move, xml_bytes, extracted, attachment=xml_attachment
-                )
-                if error:
-                    raise _AiImportDecodeError(error)
-        except _AiImportDecodeError as e:
-            self._fail(f"UBL import error: {e}", extra_vals=extraction_vals)
-            return f"FAILED: {e}"
-        except Exception as e:
-            _logger.exception("Odoo import failed for AI invoice import %s", self.id)
-            self._fail(f"Odoo import failed: {e}", extra_vals=extraction_vals)
-            return f"FAILED: {e}"
-
-        # Link outside the savepoint so a retry cannot create a duplicate bill.
-        self.xml_attachment_id = xml_attachment.id
-        self.move_id = move.id
-
-        # Step 4: post-processing. On error the bill stays linked and the record
-        # is marked failed.
-        try:
-            with self.env.cr.savepoint():
-                # The PDF is already attached above; do not copy it again.
-                AccountMove._ai_post_process(
-                    move, extracted,
-                    usage, ai_result["model_name"], company,
-                )
-        except Exception as e:
-            _logger.exception(
-                "Post-import processing failed for import %s (move %s already "
-                "created)",
-                self.id,
-                move.id,
-            )
-            self._fail(
-                f"Post-import processing failed (vendor bill id {move.id} was "
-                f"created): {e}"
-            )
-            return f"FAILED: {e}"
-
-        self.write({"state": "done"})
-
-        return (
-            f"OK: Created {move.display_name} | "
-            f"Tokens: {usage['input_tokens']} in / {usage['output_tokens']} out"
-        )
-
-    def action_reimport_from_json(self):
-        """Re-run UBL generation + import from the stored (possibly hand-edited)
-        extraction JSON, WITHOUT calling Claude again — a cheap recovery when the
-        AI extraction was almost right (e.g. a missing date you can fill in)."""
-        self.ensure_one()
-        # Server-side guard; the button's visibility rule is UI-only.
-        if self.state != "failed":
-            raise UserError(
-                _("Only failed imports can be re-imported (this one is '%s').")
-                % self.state
-            )
-        if self.move_id:
-            raise UserError(
-                _(
-                    "A vendor bill (%s) is already linked; re-import is blocked to "
-                    "avoid creating a duplicate."
-                )
-                % self.move_id.display_name
-            )
-        if not self.extraction_data:
-            raise UserError(_("There is no stored extraction JSON to re-import."))
-        try:
-            extracted = json.loads(self.extraction_data)
-        except json.JSONDecodeError as e:
-            raise UserError(_("The stored extraction JSON is not valid: %s") % e)
-
+    def _import_before_reimport(self, extracted):
+        super()._import_before_reimport(extracted)
+        if self._import_reader() != AI_READER:
+            # Another reader's record: its PDF, if any, is an image
+            # that came with structured data, not something the AI read.
+            return
         AccountMove = self.env["account.move"]
-        self.state = "processing"
-        # Re-check the PDF's text layer and re-run the currency resolver before
-        # the XML is built, since the resolver may write a currency.
+        # 🔴 RE-ASK THE PDF BEFORE THE XML IS BUILT (19.0.3.20.0).
+        # This is the path that never asked it: the stored JSON may carry no
+        # text-layer verdict at all (every extraction from 19.0.3.3.0 to
+        # 19.0.3.17.0), or one that says UNKNOWN because the attachment could
+        # not be read at the time. `_ai_reask_the_pdf` re-decides from the
+        # bytes on this record AND re-runs the country resolver, so the heal
+        # works in both directions — it can add a marker as well as drop one.
+        # It is here rather than in `_finalize_import` because the resolver can
+        # WRITE a currency, and a currency written after the line below would
+        # never reach the bill.
         AccountMove._ai_reask_the_pdf(
             extracted,
             self.pdf_attachment_id.raw if self.pdf_attachment_id else None,
         )
-        try:
-            xml_bytes = AccountMove._ai_generate_ubl_from_extracted(
-                extracted, self.company_id
-            )
-        except Exception as e:
-            _logger.exception("UBL generation from stored JSON failed for %s", self.id)
-            self._fail(f"UBL generation from stored JSON failed: {e}")
-            return
-        self._finalize_import(
-            {
-                "extracted": extracted,
-                "usage": {
-                    "input_tokens": self.input_tokens or 0,
-                    "output_tokens": self.output_tokens or 0,
-                },
-                "model_name": self.extraction_model or "manual-reimport",
-                "xml_bytes": xml_bytes,
-            }
-        )
 
-    @api.model
-    def _ai_user_works_imports(self, user=None):
-        """Whether ``user`` (default: the current one) is somebody who works the
-        AI imports — and so sees the failed-imports bubble and the import menus.
+    def _import_reimport_source_label(self, extracted):
+        """A re-import of a PDF the AI read keeps the AI note; a structured
+        source's record keeps its neutral one (the core's answer)."""
+        if "source_meta" in (extracted or {}):
+            return super()._import_reimport_source_label(extracted)
+        return None
 
-        Access rules stay on `group_account_invoice`; notification is narrower.
-        Both groups are checked because in 19.0 core neither implies the other.
-        Keep in step with `failed_imports_menu.js` and the menu items.
-        """
-        user = user or self.env.user
-        return user.has_group("account.group_account_user") or user.has_group(
-            "account.group_account_manager"
-        )
-
-    def _fail(self, message, extra_vals=None):
-        _logger.error("AI Invoice Import %s failed: %s", self.id, message)
-        vals = {"state": "failed", "error_message": message}
-        if extra_vals:
-            vals.update(extra_vals)
-        self.write(vals)
+    def _import_reimport_meta(self):
+        if self._import_reader() != AI_READER:
+            return super()._import_reimport_meta()
+        return {
+            "usage": {
+                "input_tokens": self.input_tokens or 0,
+                "output_tokens": self.output_tokens or 0,
+            },
+            "model_name": self.extraction_model or "manual-reimport",
+        }

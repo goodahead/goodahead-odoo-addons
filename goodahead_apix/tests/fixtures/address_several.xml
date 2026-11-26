@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented AddressQuery answer: several addresses (the reference page's example shape) -->
+<Response>
+ <Status>OK</Status>
+ <StatusCode>2000</StatusCode>
+ <Content>
+  <Group>
+   <Value type="ReceiverName">Example Receiver Oy</Value>
+   <Value type="ReceiverYtunnus">0000003-5</Value>
+   <Value type="ReceivereInvoiceAddress">003700000035</Value>
+   <Value type="ReceiverOperator">Example Operator Oy</Value>
+  </Group>
+  <Group>
+   <Value type="ReceiverName">Example Receiver Oy</Value>
+   <Value type="ReceiverYtunnus">0000003-5</Value>
+   <Value type="ReceivereInvoiceAddress">FI0000000000000000</Value>
+   <Value type="ReceiverOperator">Example Bank Oyj</Value>
+  </Group>
+ </Content>
+</Response>

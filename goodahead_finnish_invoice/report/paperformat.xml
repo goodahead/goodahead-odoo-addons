@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <data>
+
+        <!--
+            Attached to nothing: ir_actions_report.get_paperformat() hands it
+            back only while a Finnish customer invoice is being printed, so
+            vendor bills going through the same report action keep the
+            company's format.
+
+            disable_shrinking is the important one. With smart shrinking on,
+            wkhtmltopdf scales the whole page down to fit its idea of the
+            content width, and every pt and mm in the stylesheet comes out at
+            about 0.8x — which is why the type read as too small next to the
+            reference. Off, the units in the template are the units on paper.
+
+            margin_top 28 with header_spacing 7 puts the running header at 21 mm
+            and starts the body at 28 mm (wkhtmltopdf lays the header out from
+            margin_top - header_spacing downwards). The gap matters on
+            continuation pages, where the line table's own head would otherwise
+            print straight through the document title.
+
+            margin_bottom is only a floor. The band the VAT breakdown, payment
+            slip and bar code are drawn into has to grow with the number of VAT
+            rates, so report_invoice.xml computes it per document and overrides
+            this through data-report-margin-bottom.
+        -->
+        <record id="paperformat_finnish_invoice" model="report.paperformat">
+            <field name="name">A4 Finnish Invoice</field>
+            <field name="default" eval="False" />
+            <field name="format">A4</field>
+            <field name="page_height">0</field>
+            <field name="page_width">0</field>
+            <field name="orientation">Portrait</field>
+            <field name="margin_top">28</field>
+            <field name="margin_bottom">72</field>
+            <!-- Side margins are done in CSS (.fi_page) so the header, the body
+                 and the footer share one edge that can be measured and adjusted
+                 in one place. -->
+            <field name="margin_left">0</field>
+            <field name="margin_right">0</field>
+            <field name="header_line" eval="False" />
+            <field name="header_spacing">7</field>
+            <field name="dpi">96</field>
+            <field name="css_margins" eval="False" />
+            <field name="disable_shrinking" eval="True" />
+        </record>
+
+    </data>
+</odoo>

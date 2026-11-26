@@ -1,0 +1,95 @@
+{
+  "message": {
+    "identifier": "101-1",
+    "timestamp": "2026-11-25T10:00:00+02:00",
+    "sender_edicode": "003700000035",
+    "sender_intermediator": "APIX"
+  },
+  "receiver": {
+    "edicode": "003700000019",
+    "operator_identifier": "EXAMPLEOP"
+  },
+  "seller": {
+    "name": "Example Supplier Oy",
+    "business_id": "0000003-5",
+    "vat": "FI00000035",
+    "street": "Esimerkkikatu 1",
+    "zip": "00100",
+    "city": "Helsinki",
+    "country_code": "FI",
+    "edicode": "003700000035",
+    "iban": "FI1612345600000002",
+    "bic": "EXMPFIHH"
+  },
+  "buyer": {
+    "name": "Example Buyer Oy",
+    "business_id": null,
+    "vat": "SE000000000101",
+    "street": "Exempelgatan 3",
+    "zip": "11122",
+    "city": "Stockholm",
+    "country_code": "SE",
+    "contact_name": "Erkki Esimerkki",
+    "email": "ostoreskontra@example.com"
+  },
+  "invoice": {
+    "type": "invoice",
+    "number": "INV/2026/00001",
+    "date": "2026-11-25",
+    "due_date": "2026-12-09",
+    "currency": "EUR",
+    "original_number": null,
+    "payment_reference": "10001235",
+    "note": "Kiitos tilauksesta.",
+    "totals": {
+      "untaxed": 600.0,
+      "tax": 0.0,
+      "total": 600.0,
+      "rounding": 0.0,
+      "rows": 600.0
+    },
+    "type_code_un": "380"
+  },
+  "lines": [
+    {
+      "code": "ZZ-SERV",
+      "name": "Consulting",
+      "description": null,
+      "quantity": 5,
+      "rec20_code": "C62",
+      "unit_name": "kpl",
+      "base_quantity": 1,
+      "price_unit": 120.0,
+      "tax_percent": 0.0,
+      "tax_code": "AE",
+      "untaxed": 600.0,
+      "tax": 0.0,
+      "total": 600.0
+    }
+  ],
+  "taxes": [
+    {
+      "percent": 0.0,
+      "base": 600.0,
+      "amount": 0.0,
+      "code": "AE",
+      "reason_lines": [
+        "Käännetty verovelvollisuus",
+        "Reverse charge"
+      ],
+      "exemption_code": "VATEX-EU-AE"
+    }
+  ],
+  "epi": {
+    "date": "2026-11-25",
+    "reference": "",
+    "bic": "EXMPFIHH",
+    "beneficiary_name": "Example Supplier Oy",
+    "iban": "FI1612345600000002",
+    "remittance_reference": "10001235",
+    "amount": 600.0,
+    "due_date": "2026-12-09",
+    "payment_means_code": "58"
+  },
+  "_comment": "Invented fixture: reverse charge to an EU business customer (AC-01)."
+}

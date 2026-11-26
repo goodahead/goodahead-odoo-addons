@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- SCR-14: the sending step of the migration tool. -->
+<odoo>
+    <record id="goodahead_apix_migration_view_form_sending" model="ir.ui.view">
+        <field name="name">goodahead.apix.migration.form.sending</field>
+        <field name="model">goodahead.apix.migration</field>
+        <field name="inherit_id"
+               ref="goodahead_invoice_import_apix_migration.goodahead_apix_migration_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='step_switch_back']" position="after">
+                <div name="step_sending" invisible="step != 'sending'">
+                    <field name="sending_view" invisible="1"/>
+                    <field name="sending_result" invisible="1"/>
+                    <field name="sending_can_carry" invisible="1"/>
+                    <field name="sending_can_switch_back" invisible="1"/>
+                    <!-- success / partial / switched back / refused -->
+                    <div name="sending_result_success" class="alert alert-success" role="status"
+                         invisible="sending_result != 'done'">
+                        <field name="sending_result_message" readonly="1"/>
+                    </div>
+                    <div name="sending_result_warning" class="alert alert-warning" role="status"
+                         invisible="sending_result not in ('partial', 'refused')">
+                        <field name="sending_result_message" readonly="1"/>
+                    </div>
+                    <div name="sending_result_info" class="alert alert-info" role="status"
+                         invisible="sending_result != 'switched_back'">
+                        <field name="sending_result_message" readonly="1"/>
+                    </div>
+                    <!-- validation / no adapter / nothing / error -->
+                    <div name="sending_banner_warning" class="alert alert-warning" role="alert"
+                         invisible="sending_view not in ('needs_connection', 'no_adapter')">
+                        <field name="sending_banner" readonly="1"/>
+                    </div>
+                    <div name="sending_banner_info" class="alert alert-info" role="status"
+                         invisible="sending_view != 'nothing'">
+                        <field name="sending_banner" readonly="1"/>
+                    </div>
+                    <div name="sending_banner_error" class="alert alert-danger" role="alert"
+                         invisible="sending_view != 'error'">
+                        <field name="sending_banner" readonly="1"/>
+                    </div>
+                    <group invisible="sending_view not in ('found', 'error', 'nothing')">
+                        <field name="sending_source_code"/>
+                    </group>
+                    <div name="sending_found" invisible="sending_view != 'found'">
+                        <group>
+                            <group>
+                                <field name="sending_status" string="Sending there"/>
+                                <field name="sending_status_reason" string="Details"
+                                       invisible="not sending_status_reason"/>
+                            </group>
+                        </group>
+                        <group>
+                            <group>
+                                <field name="sending_count_recipients"/>
+                                <field name="sending_count_channels"/>
+                            </group>
+                            <group>
+                                <field name="sending_count_methods"/>
+                                <field name="sending_count_sent"/>
+                            </group>
+                        </group>
+                        <p class="text-muted">
+                            Carrying over writes the customers' e-invoice addresses and
+                            operators, their sending channels, the invoices' transmit methods
+                            and one "sent by the earlier setup" entry per sent invoice, then
+                            stops the earlier setup sending for this company. Carrying over
+                            again changes nothing already carried.
+                        </p>
+                    </div>
+                </div>
+            </xpath>
+            <xpath expr="//footer/button[@special='cancel']" position="before">
+                <button name="action_open_sending" type="object" string="Sending"
+                        invisible="step == 'sending'"/>
+                <button name="action_sending_carry_over" type="object" string="Carry over sending"
+                        class="btn-primary"
+                        invisible="step != 'sending' or not sending_can_carry"/>
+                <button name="action_sending_switch_back" type="object"
+                        string="Switch sending back"
+                        invisible="step != 'sending' or not sending_can_switch_back"
+                        confirm="The earlier setup sends for this company again. Continue?"/>
+                <button name="action_open_sending_settings" type="object"
+                        string="Open sending settings"
+                        invisible="step != 'sending' or sending_result not in ('done', 'partial', 'refused')"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

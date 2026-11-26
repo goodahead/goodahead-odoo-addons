@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-09: the "Sending" section of the shared connection screen.
+         Administrators switch sending and set the threshold; Accountants see
+         the connection status and "Sending: On / Off" only. -->
+    <record id="goodahead_apix_connection_view_form_sending" model="ir.ui.view">
+        <field name="name">goodahead.apix.connection.form.sending</field>
+        <field name="model">goodahead.apix.connection</field>
+        <field name="inherit_id" ref="goodahead_apix.goodahead_apix_connection_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/field[@name='status']" position="before">
+                <button name="action_apix_sending_on" type="object" string="Switch sending on"
+                        invisible="sending_enabled" groups="account.group_account_manager"/>
+                <button name="action_apix_sending_off" type="object" string="Switch sending off"
+                        invisible="not sending_enabled" groups="account.group_account_manager"
+                        confirm="Switch APIX sending off for this company? Queued sends will fail when their turn comes."/>
+            </xpath>
+            <xpath expr="//sheet" position="before">
+                <field name="send_circuit_open" invisible="1"/>
+                <div class="alert alert-danger mb-0" role="alert" invisible="not send_circuit_open">
+                    Sending paused until <field name="send_paused_until" readonly="1" class="oe_inline"/>
+                    — <field name="status_message" readonly="1" class="oe_inline"/>
+                </div>
+            </xpath>
+            <xpath expr="//group[@name='sending_interface']" position="before">
+                <group string="Sending" name="sending">
+                    <field name="sending_enabled" widget="boolean_toggle" readonly="1"/>
+                    <field name="background_threshold" groups="account.group_account_manager"/>
+                    <field name="credit_balance" groups="account.group_account_manager"/>
+                    <field name="credit_balance_date" groups="account.group_account_manager"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented DeliveryMethod answer: one e-invoice, one letter -->
+<Response version="1.0">
+ <Status>OK</Status>
+ <StatusCode>2000</StatusCode>
+ <FreeText language="en">OK</FreeText>
+ <Content>
+  <Group>
+   <Value type="DocumentID">ZZ-1</Value>
+   <Value type="ChannelName">eInvoice</Value>
+   <Value type="SenderName">Example Seller Oy</Value>
+   <Value type="SenderYtunnus">0000001-9</Value>
+   <Value type="ReceiverName">Example Receiver Oy</Value>
+   <Value type="CostInCredits">1</Value>
+   <Value type="ReceiverYtunnus">0000003-5</Value>
+   <Value type="MessageType">eInvoice</Value>
+  </Group>
+  <Group>
+   <Value type="DocumentID">ZZ-2</Value>
+   <Value type="ChannelName">Paper</Value>
+   <Value type="SenderName">Example Seller Oy</Value>
+   <Value type="SenderYtunnus">0000001-9</Value>
+   <Value type="ReceiverName">Another Example Oy</Value>
+   <Value type="CostInCredits">3</Value>
+   <Value type="MessageType">eInvoice</Value>
+   <Value type="LetterPages">2</Value>
+   <Value type="LetterClass">2</Value>
+  </Group>
+ </Content>
+</Response>

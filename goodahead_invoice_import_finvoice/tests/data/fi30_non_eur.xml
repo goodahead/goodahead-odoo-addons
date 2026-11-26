@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: a USD invoice. The VAT breakdown is repeated in EUR
+     (guideline §14: per tax rate and currency) and the instructed amount is in
+     EUR (guideline §13). -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>INVOICE</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>EX-2026-77</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261112</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="USD">200,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="USD">51,00</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="USD">251,00</InvoiceTotalVatIncludedAmount>
+    <ExchangeRate>1,086957</ExchangeRate>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="USD">200,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="USD">51,00</VatRateAmount>
+    </VatSpecificationDetails>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">184,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">46,92</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleIdentifier>ART-501</ArticleIdentifier>
+    <ArticleName>Lisenssi</ArticleName>
+    <InvoicedQuantity QuantityUnitCodeUN="C62">4</InvoicedQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="USD">50,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="USD">51,00</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="USD">200,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="USD">251,00</RowAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261112</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">230,92</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SHA">SHA</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261212</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

@@ -47,7 +47,10 @@ class ResConfigSettings(models.TransientModel):
         except ClaudeAPIError as e:
             raise UserError(_("Failed to fetch models: %s") % e) from e
 
-        # The notification is sticky when configuration points at an archived model.
+        # 🔴 19.0.1.3.0: the sync now retires models, and it says so. A notification that only ever
+        # counts up would hide exactly the half of the sync that takes something away — and
+        # when what it took away is the model a company is configured to use, the message is
+        # made STICKY, because that one needs reading, not glancing at.
         lines = [_("Synced %s models.") % result["synced"]]
         if result["archived"]:
             lines.append(_("Archived %(n)s no longer offered: %(ids)s") % {
@@ -61,7 +64,7 @@ class ResConfigSettings(models.TransientModel):
             })
         for pointer in result["pointers"]:
             lines.append(_(
-                "%(record)s still uses the archived model %(api_id)s (%(field)s) — "
+                "⚠ %(record)s still uses the archived model %(api_id)s (%(field)s) — "
                 "choose another."
             ) % {
                 "record": pointer["record"],

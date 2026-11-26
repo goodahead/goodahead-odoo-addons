@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <data>
+
+        <record id="view_company_form_finnish_invoice" model="ir.ui.view">
+            <field name="name">res.company.form.finnish.invoice</field>
+            <field name="model">res.company</field>
+            <field name="inherit_id" ref="base.view_company_form" />
+            <field name="arch" type="xml">
+                <page name="general_info" position="inside">
+                    <group string="Finnish Invoice" name="finnish_invoice">
+                        <field name="fi_invoice_penalty_interest" placeholder="7,50 %" />
+                        <field name="fi_invoice_complaint_period" placeholder="8 pv" />
+                    </group>
+                </page>
+            </field>
+        </record>
+
+    </data>
+</odoo>

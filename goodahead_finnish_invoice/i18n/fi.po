@@ -1,0 +1,221 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* goodahead_finnish_invoice
+#
+# The report msgids are QWeb view terms: Odoo extracts each one together with
+# the markup that wraps it, so they have to match report_invoice.xml character
+# for character. After touching a label, re-export and diff:
+#   odoo i18n export -d <db> -l pot -o - goodahead_finnish_invoice
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: fi\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "Invoice"
+msgstr "Lasku"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "Credit Note"
+msgstr "Hyvityslasku"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Page</span> <span class=\"page\"/> / <span class=\"topage\"/>"
+msgstr "<span>Sivu</span> <span class=\"page\"/> / <span class=\"topage\"/>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "Billing Address"
+msgstr "Laskutusosoite"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "Delivery Address"
+msgstr "Toimitusosoite"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+#. Finnish elides the shared stem of a compound rather than repeating it:
+#. "Laskutus- ja toimitusosoite", not "Laskutusosoite ja toimitusosoite".
+msgid "Billing and Delivery Address"
+msgstr "Laskutus- ja toimitusosoite"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Invoice Number</span>"
+msgstr "<span>Laskunumero</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Order Number</span>"
+msgstr "<span>Tilausnumero</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Customer Number</span>"
+msgstr "<span>Asiakas nro</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Customer VAT Number</span>"
+msgstr "<span>Ostajan alv-numero</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Invoice Date</span>"
+msgstr "<span>Laskupäivä</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Payment Terms</span>"
+msgstr "<span>Maksuehdot</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Due Date</span>"
+msgstr "<span>Eräpäivä</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Late Payment Interest</span>"
+msgstr "<span>Viivästyskorko</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Complaint Period</span>"
+msgstr "<span>Huomautusaika</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Product / Description</span>"
+msgstr "<span>Tuote / Selite</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Qty</span>"
+msgstr "<span>Lkm</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Unit</span>"
+msgstr "<span>Yks.</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Price</span>"
+msgstr "<span>Hinta</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>VAT %</span>"
+msgstr "<span>ALV-%</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Excl. VAT</span>"
+msgstr "<span>Veroton</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Total</span>"
+msgstr "<span>Yhteensä</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Total (VAT 0%)</span>"
+msgstr "<span>Yhteensä (ALV 0 %)</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>VAT</span>"
+msgstr "<span>ALV</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Total (incl. VAT)</span>"
+msgstr "<span>Yhteensä (sis. ALV)</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Paid</span>"
+msgstr "<span>Maksettu</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Total Due</span>"
+msgstr "<span>Maksettavaa</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>VAT Breakdown</span>"
+msgstr "<span>ALV-erittely</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Net</span>"
+msgstr "<span>Netto</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Gross</span>"
+msgstr "<span>Brutto</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Bank</span>"
+msgstr "<span>Pankki</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>IBAN</span>"
+msgstr "<span>IBAN</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>BIC</span>"
+msgstr "<span>BIC</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Reference</span>"
+msgstr "<span>Viitenumero</span>"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>Business ID</span>:"
+msgstr "<span>Y-tunnus</span>:"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.report_invoice_document
+msgid "<span>VAT Number</span>:"
+msgstr "<span>ALV-numero</span>:"
+
+#. module: goodahead_finnish_invoice
+#: model_terms:ir.ui.view,arch_db:goodahead_finnish_invoice.view_company_form_finnish_invoice
+msgid "Finnish Invoice"
+msgstr "Suomalainen lasku"
+
+#. module: goodahead_finnish_invoice
+#: model:ir.model.fields,field_description:goodahead_finnish_invoice.field_res_company__fi_invoice_penalty_interest
+msgid "Late Payment Interest"
+msgstr "Viivästyskorko"
+
+#. module: goodahead_finnish_invoice
+#: model:ir.model.fields,field_description:goodahead_finnish_invoice.field_res_company__fi_invoice_complaint_period
+msgid "Complaint Period"
+msgstr "Huomautusaika"
+
+#. module: goodahead_finnish_invoice
+#: model:ir.model.fields,field_description:goodahead_finnish_invoice.field_account_bank_statement_line__fi_bank_barcode
+#: model:ir.model.fields,field_description:goodahead_finnish_invoice.field_account_move__fi_bank_barcode
+msgid "Bank Bar Code"
+msgstr "Pankkiviivakoodi"

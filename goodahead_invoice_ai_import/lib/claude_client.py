@@ -1,11 +1,20 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
 """Invoice extraction prompt, response handling and validation.
 
-The Claude transport, API key and model registry belong to `goodahead_claude`.
-This module holds the invoice-specific part: the prompt, the PDF framing, the
-stop-reason handling and the validation of the extracted JSON. No model id is
-hardcoded; the client resolves one from the fetched model registry.
+🔴 This module no longer speaks HTTP. In this tree `goodahead_claude` owns the
+Claude transport, the per-company API key and the `goodahead.claude.model`
+registry, so the source module's own `requests` client, `test_connection`,
+`list_models` and `DEFAULT_MODEL` were all deleted rather than ported. What is
+left is the part that is actually about invoices: the prompt, the PDF framing,
+the stop-reason handling and the schema validation.
+
+`DEFAULT_MODEL` in particular is NOT reintroduced here. It was
+`claude-sonnet-4-20250514` in the source, which is retired; `goodahead_claude`
+resolves the model from the fetched registry precisely because a hardcoded
+literal had already gone stale once and every unnamed call hit a 404 that no
+gate could see.
 """
 
 import base64
@@ -14,150 +23,89 @@ import logging
 import re
 from collections.abc import Mapping
 
-from . import pdf_currency
+# 🔴 RE-EXPORTED, NOT DUPLICATED (core/source split). The currency keys, the three
+# currency questions, the reconciliation tolerances and the validators moved to
+# the import core, which every invoice source shares. Every name that used to be
+# importable from here still is.
+from odoo.addons.goodahead_invoice_import.lib.invoice_data import (  # noqa: F401
+    _ABSENT,
+    CURRENCY_INFERRED_KEY,
+    CURRENCY_MARKING_KEY,
+    CURRENCY_SYMBOL_KEY,
+    LINE_RATIO_LIMIT,
+    TOLERANCE_ABS,
+    TOLERANCE_REL,
+    InvoiceDataError,
+    InvoiceDataValidator,
+    currency_marking_verdict,
+    nothing_was_printed,
+    one_country_on_both_sides,
+)
 
 _logger = logging.getLogger(__name__)
 
-# Models that think first count the thinking against max_tokens, so leave room
-# for long invoices. Passed per call: the shared client is also used by other
-# features, whose defaults must not change.
+# Newer models (Opus 5.5 and up) always think first, and the thinking counts
+# against max_tokens: leave room for it on a long, many-line invoice.
+#
+# 🔴 Passed PER CALL. `goodahead_claude`'s own default is 4096 and the company
+# default on this instance is 8000; raising either would also raise it for
+# fraud detection, which shares the client.
 MAX_TOKENS = 16000
-# Thinking makes responses slower, and a timeout is a failed (and billed) import.
+# Thinking makes a response slower; a timeout is a failed (and billed) import.
+# Per call for the same reason — the shared default is 120 s.
 REQUEST_TIMEOUT = 300
 
-# Keys of the country-based currency fallback. They are read by this validator,
-# by `account_move._ai_post_process` and by the tests, so they are constants.
+
+# ---------------------------------------------------------------------------
+# The prompt: four country-neutral PROCEDURES with a locale block slotted in
+# ---------------------------------------------------------------------------
 #
-# `currency_symbol` is reported by the model: the currency marking printed on
-# the page, or null. It distinguishes "nothing printed" from "something printed
-# that could not be placed", which is what makes the fallback safe.
-CURRENCY_SYMBOL_KEY = "currency_symbol"
-# Set by this module, never by the model: the country the currency was taken from.
-CURRENCY_INFERRED_KEY = "currency_inferred_from_country"
-# Set by this module from the PDF's text layer (see `pdf_currency`). It outranks
-# the model's `currency_symbol`, which has been seen to vary between runs on the
-# same document. Both answers are stored so an audit can see which one decided.
-CURRENCY_MARKING_KEY = "currency_marking"
-
-# "Not reported" and "reported null" are different answers; only null allows
-# the fallback. Older stored extractions have no `currency_symbol` key at all.
-_ABSENT = object()
-
-
-def nothing_was_printed(data):
-    """Does the page carry no currency marking at all?
-
-    Public because `account_move._ai_post_process` re-checks a marker that
-    arrives in stored JSON. When the PDF's text layer gave a verdict, it wins in
-    both directions; the model's `currency_symbol` decides only when the text
-    layer is unknown (scanned or unreadable PDF).
-    """
-    verdict = (data.get(CURRENCY_MARKING_KEY) or {})
-    if isinstance(verdict, dict):
-        text_layer = verdict.get("text_layer")
-        if text_layer == pdf_currency.NOTHING_PRINTED:
-            return True
-        if text_layer == pdf_currency.PRINTED:
-            return False
-
-    printed = data.get(CURRENCY_SYMBOL_KEY, _ABSENT)
-    if printed is _ABSENT:
-        return False  # older stored JSON: the question was never asked
-    if printed is None:
-        return True
-    # Only an empty string counts as "nothing printed"; a non-string value is
-    # unreadable and does not allow the fallback.
-    return isinstance(printed, str) and not printed.strip()
-
-
-def currency_marking_verdict(pdf_bytes, data):
-    """Read the PDF's text layer and pair the answer with the model's.
-
-    Returns the dict stored under `CURRENCY_MARKING_KEY`, recording both
-    sources and which one decides.
-    """
-    scan = pdf_currency.scan_pdf_for_currency(pdf_bytes)
-    reported = data.get(CURRENCY_SYMBOL_KEY, _ABSENT)
-    model_reported = reported is not _ABSENT
-    model_says_printed = None
-    if model_reported:
-        model_says_printed = not (
-            reported is None
-            or (isinstance(reported, str) and not reported.strip())
-        )
-
-    decided = scan["verdict"] != pdf_currency.UNKNOWN
-    agree = None
-    if decided and model_says_printed is not None:
-        agree = (scan["verdict"] == pdf_currency.PRINTED) == model_says_printed
-
-    verdict = {
-        "decided_by": "text_layer" if decided else "model",
-        "text_layer": scan["verdict"],
-        "markings": scan["markings"],
-        # How much text the verdict was read from, so a `nothing_printed`
-        # taken from a near-empty page can be told apart later.
-        "alnum": scan["alnum"],
-        "model_reported": model_reported,
-        "model_symbol": reported if model_reported else None,
-        "agree": agree,
-    }
-
-    if agree is False:
-        # A disagreement is worth a warning; the message names which way it went.
-        _logger.warning(
-            "AI invoice import: the PDF's text layer and the model disagree "
-            "about whether this page prints a currency. Text layer: %s %s. "
-            "Model: currency_symbol=%r. The text layer decides (%s)",
-            scan["verdict"],
-            scan["markings"] or "[]",
-            reported,
-            "the page is unmarked, so the country fallback may fire"
-            if scan["verdict"] == pdf_currency.NOTHING_PRINTED
-            else "the page IS marked, so the country fallback is blocked",
-        )
-    return verdict
-
-
-def one_country_on_both_sides(data):
-    """The 2-letter country both parties are in, or None.
-
-    Both codes come from the document. The company's own country is never
-    used in place of a missing buyer country.
-    """
-    seller = data.get("seller")
-    buyer = data.get("buyer")
-    if not isinstance(seller, dict) or not isinstance(buyer, dict):
-        return None
-    seller_cc = str(seller.get("country_code") or "").strip().upper()
-    buyer_cc = str(buyer.get("country_code") or "").strip().upper()
-    if not seller_cc or seller_cc != buyer_cc:
-        return None
-    return seller_cc
-
-
-# Reconciliation tolerance: the greater of two cents (per-line rounding) and
-# half a percent (rounding accumulated over a long document). Misread separators,
-# transposed digits and dropped lines are all far above that.
-TOLERANCE_ABS = 0.02
-TOLERANCE_REL = 0.005
-
-# Per-line check: `quantity × price_unit` and `line_total` may differ (line
-# discounts are common), but not by 100× or more, which is what a misplaced
-# decimal point or thousands separator produces.
-LINE_RATIO_LIMIT = 100
-
-# The prompt: country-neutral procedures (document type, currency, dates,
-# numbers) with a locale block substituted at named slots. Several slots sit
-# inside the JSON schema descriptions, so the block cannot simply be appended.
-# The schema keys are the same in every locale, and the composed US prompt is
-# pinned byte-identical by a golden-file test.
+# 🔴 the dual-core design. The module is going open-source and runs on a Finnish
+# deployment as well as a US one, so the US tax, identifier and payment wording
+# had to stop being the only wording there is.
 #
-# Slots use `@@name@@` rather than `{name}` because the prompt later goes
-# through `str.format` to fill `{categories_block}`.
+# WHAT STAYS, AND WHY IT IS NOT A LOCALE QUESTION. The four ordered procedures
+# — DOCUMENT TYPE, CURRENCY, DATES, NUMBERS — are country-neutral BY
+# CONSTRUCTION, not by luck. Each of them names several countries on purpose:
+# DATES step 3 is a two-sided prior ("US vendors usually print MM/DD/YYYY;
+# vendors in Europe, China and most of the rest of the world usually print
+# DD/MM/YYYY") whose whole point is that neither side is proof; CURRENCY step 3
+# lists a Finnish VAT rate beside a US state rate and an IBAN prefix beside an
+# ABA routing number, because the model is being told to read evidence, not to
+# apply a nationality. Moving any of that into a locale block would make each
+# deployment blind to the other half of its own evidence, which is the defect
+# 19.0.2.2.0 was written to remove. They stay in all three blocks.
+#
+# 🔴 WHERE THE US WORDING ACTUALLY SITS — AND IT IS NOT THREE TIDY BLOCKS.
+# the dual-core design names three contiguous regions (tax, identifiers, payment) and says
+# the extraction schema is unaffected. Measured against this file, the US
+# wording sits in THIRTEEN places, and NINE of them are inside the JSON schema
+# and the `Important rules:` tail that §8 says must not fork. The schema KEYS
+# do not fork — that promise holds and `test_the_schema_keys_are_identical_in_
+# every_locale` pins it — but their DESCRIPTIONS are where "2-letter US state
+# code", "9-digit US ABA routing number" and "GLL=US gallon" live. So the
+# locale block is a set of named slots substituted at thirteen points, not a
+# paragraph appended after the procedures.
+#
+# That also means the composition F31 writes as
+# `instructions = procedures + locale_block(country) + categories_block`
+# cannot be a concatenation here without reordering the prompt — and the
+# composed US prompt has to stay BYTE-IDENTICAL, because the US deployment is in
+# production on it (`tests/data/system_prompt_us_55ac5e7.txt`).
+#
+# WHY `@@name@@` AND NOT `{name}`. `SYSTEM_PROMPT` is run through `str.format`
+# later, to fill `{categories_block}`, and the schema is full of doubled braces
+# for exactly that reason. A second `{}` placeholder would have to survive the
+# first pass and be escaped out of the second, and a `%`/`$` template would
+# collide with the prompt's own "6.625%" and "$". A marker that is not
+# templating syntax at all has no escaping rules to get wrong, and
+# `build_system_prompt` raises if one is left unfilled.
 _SLOT_RE = re.compile(r"@@([a-z_]+)@@")
 
-# Looser than `_SLOT_RE`, to name a malformed marker left after substitution.
+# ⚠️ DELIBERATELY LOOSER THAN `_SLOT_RE`, and that is its only reason to exist.
+# It is used to NAME what survived substitution, and anything `_SLOT_RE` matches
+# has by then been substituted — so the error message has to be built with a
+# regex that catches the marker `_SLOT_RE` could not parse.
 _ANY_MARKER_RE = re.compile(r"@@[^@\n]{0,80}@@")
 
 PROCEDURES = """\
@@ -253,7 +201,7 @@ no country shown or with a country that uses a dollar other than the US one, \
    - The vendor's VAT number prefix and address country.
 4. A DOMESTIC DOCUMENT THAT PRINTS NO SYMBOL AND NO CODE AT ALL. Only when \
 BOTH of these hold: (a) the document shows NO currency symbol and NO ISO code \
-anywhere — the amounts are bare numbers such as "600.07" and "3,748.50" — and \
+anywhere — the amounts are bare numbers such as "629.12" and "5,006.68" — and \
 (b) the vendor's address and the buyer's address are in the SAME country. Then \
 report that country's own currency: a domestic bill with unmarked amounts is \
 denominated in the domestic currency, which is why nobody printed a symbol on \
@@ -263,7 +211,7 @@ place goes on to step 5, because the country is the wrong tiebreak for an \
 ambiguous symbol and a Chinese vendor billing a US buyer must never become USD. \
 It also does NOT apply when the two addresses are in different countries, or \
 when either country is not shown. 🔴 AN ADDRESS SHOWS ITS COUNTRY WHEN ITS OWN \
-FORMAT DOES — "SPRINGFIELD IL 62701-1234" and "AUSTIN TX 78701-4321" are both \
+FORMAT DOES — "FAIRVIEW AR 72000-0100" and "RIVERTON NY 14000-0100" are both \
 United States addresses whether or not the word USA appears anywhere, and a \
 ZIP+4 is still a ZIP — so a domestic \
 US bill that never names the country DOES satisfy (b). Read the address; do not \
@@ -432,7 +380,7 @@ Output JSON schema:
     "city": "string or null",
 @@locale_seller_region@@
     "postal_code": "string or null",
-    "country_code": "2-letter ISO code of the vendor's OWN address, or null if the address does not identify one. An address identifies its country when its own format does, even with no country name printed: a 2-letter US state with a ZIP is US — 5 digits or ZIP+4, so '62701-1234' and '78701-4321' both count — and a Canadian province with a 'A1A 1A1' postal code is CA. That is reading the address, not inferring. Never take it from the currency, the language, or the other party's address",
+    "country_code": "2-letter ISO code of the vendor's OWN address, or null if the address does not identify one. An address identifies its country when its own format does, even with no country name printed: a 2-letter US state with a ZIP is US — 5 digits or ZIP+4, so '72000-0100' and '14000-0100' both count — and a Canadian province with a 'A1A 1A1' postal code is CA. That is reading the address, not inferring. Never take it from the currency, the language, or the other party's address",
     "phone": "the VENDOR'S OWN phone number as printed, resolved by the CONTACT DETAILS procedure above, or null",
     "email": "the VENDOR'S OWN email address, resolved by the CONTACT DETAILS procedure above, or null",
     "website": "the vendor's own website domain or URL, resolved by the CONTACT DETAILS procedure above, or null",
@@ -502,13 +450,26 @@ between identifier types
 - Output ONLY the JSON object, no markdown, no explanation
 """
 
-# The slots in template order; also the field list of
-# `goodahead.invoice.prompt.profile`.
+# The thirteen slots, in the order the template declares them. A prompt
+# profile (`goodahead.invoice.prompt.profile`) has one text field per name, so
+# this tuple is also that model's field list.
 SLOT_NAMES = tuple(dict.fromkeys(_SLOT_RE.findall(PROCEDURES)))
+
+# ---------------------------------------------------------------------------
+# The locale blocks
+# ---------------------------------------------------------------------------
 
 LOCALE_US = "us"
 LOCALE_EU = "eu"
-# Names no country; used when no block fits the company's country.
+# 🔴 THE THIRD BLOCK IS THE POINT OF THE OTHER TWO. the dual-core design shipped two — the US
+# one and "a generic EU/VAT block as the other shipped option" — and left the
+# question it raises unanswered: which one does a company in Japan, Brazil or
+# nowhere-in-particular get? Two blocks means one of them is the default, and
+# the default would have been the US one, because that is the deployment the
+# module was written on. That is precisely the defect the dual-core design had just
+# removed from the phone rule, where `US`/`CA` shaping was being applied to
+# numbers that were never North American. So there is a third block that names
+# no country, and `locale_for_country` answers None rather than guessing.
 LOCALE_GENERIC = "generic"
 
 _US_BLOCK = {
@@ -541,7 +502,7 @@ Identification Number when one is printed (format 12-3456789) — many US \
 invoices show none, which is normal, so use null rather than guessing. \
 "business_id" is a state registration, resale or seller's permit number if \
 shown. For a non-US vendor, "vat" is the VAT number with its country prefix \
-(e.g. FI12345671) and "business_id" the national registration number.""",
+(e.g. FI00000158) and "business_id" the national registration number.""",
     "locale_payment": """\
 BANK AND REMITTANCE DETAILS. Extract whatever the document gives for paying it:
 - US bank transfer / ACH / wire: "routing_number" is the 9-digit ABA routing \
@@ -586,10 +547,54 @@ For a non-US vendor, copy a national or ISO 11649 ("RF…") reference verbatim."
 - A non-US VAT number keeps its country prefix (e.g. FI, DE, SE, NL)""",
 }
 
-# EU/EEA wording. Identifiers are never derived from one another (a Finnish VAT
-# number and business id share digits but are separate values), and national
-# payment references are copied whatever their length: Norwegian and Swedish
-# ones are longer than Finnish ones.
+# 🔴 THE VOCABULARY HERE IS A REAL DEPLOYMENT'S, NOT INVENTED. An earlier fork
+# of this module (**19.0.1.1.3**, `lib/claude_client.py`) carried a 90-line
+# prompt that a real Finnish deployment ran. The ISO 11649 RF form, the Y-tunnus example `0000007-8`, the
+# `FI00000158` VAT example and `58 for SEPA` all come from it verbatim.
+#
+# 🔴 AND TWO THINGS CAME ACROSS THAT SHOULD NOT HAVE, BOTH FOUND BY A REVIEW FINDING
+# AND BOTH REPAIRED IN 19.0.3.14.0. They are listed here rather than in the
+# changelog alone because the next person to copy from that fork will reach for
+# the same two lines:
+#
+# A. The fork's *"Finnish national references: numeric string, 2-20 digits"* was
+#    copied with the word "Finnish" dropped. `_EU_EEA` carries `NO` and `SE`,
+#    and a Norwegian KID or a Swedish OCR reference runs to **25** digits — so
+#    the block stated a Finland-only fact for a continent, inside the very
+#    commit whose purpose was to stop one country's facts reaching another's
+#    documents. `payment_reference` is optional, `_validate_extraction` never
+#    looks at it and `ubl_generator` omits `cbc:PaymentID` when it is null, so
+#    the bill would have imported clean, been paid, and been unmatchable at the
+#    vendor's bank. The generic block states no length and is the right version.
+# B. Item 1 below was left behind as an INSTRUCTION and then restated as a
+#    PREMISE: *"A Finnish VAT number is that country's business id with the
+#    hyphen removed and FI in front"*, one clause from the ban on doing it. A
+#    model told how to derive an identifier and then told not to has been given
+#    a rope. The fact that the two numbers share digits is what matters and is
+#    all that is said now.
+#
+# ⚠️ WHAT WAS DELIBERATELY NOT TAKEN FROM IT, and each of these is a defect
+# this tree has already paid to fix:
+#
+# 1. *"For Finnish Y-tunnus without prefix, convert: remove hyphen, prepend
+#    'FI'"* — an instruction to REWRITE an identifier, contradicted by its own
+#    `business_id` line ("exactly as printed") four lines above it. This module
+#    keys vendor matching on identifiers copied verbatim
+#    (`goodahead.partner.identifier`), so a rewritten one is a key that matches
+#    nothing, and the PROCEDURES' "Never convert, reformat or 'correct' an
+#    identifier" rule is older and right.
+# 2. `"issue_date": "YYYY-MM-DD"` with no "or null" — the exact schema line
+#    19.0.2.2.0 fixed here, where the schema contradicted the procedure three
+#    hundred words above it.
+# 3. `"currency": "3-letter ISO code"` with no procedure and no null — the
+#    guess 19.0.2.3.0 made into a loud failure.
+# 4. Its document-type rule, a three-line keyword match, which this tree's
+#    DOCUMENT TYPE procedure already absorbed and widened (its "hyvityslasku,
+#    Gutschrift, kreditnota" are all in the procedure, beside nine more
+#    languages and a UN/EDIFACT code).
+# 5. Its Peppol EAS map, which 19.0.2.1.0 records as wrong in a way that broke
+#    a real import — not prompt text, but the same "their fork is older"
+#    reasoning applies and it is why nothing here is copied without a reason.
 _EU_BLOCK = {
     "locale_origin": """\
 Most documents \
@@ -619,9 +624,9 @@ the document usually says so ("reverse charge", "käännetty verovelvollisuus", 
 Do not confuse it with "Z": a reverse-charge line is taxable, just not here.""",
     "locale_identifiers": """\
 IDENTIFIERS. "vat" is the EU VAT number WITH its country prefix, exactly as \
-printed (e.g. FI12345671, DE123456789, SE556123456701). "business_id" is the \
+printed (e.g. FI00000158, DE123456789, SE556123456701). "business_id" is the \
 national registration number, also exactly as printed — the Finnish Y-tunnus \
-(e.g. 7654321-2), the Swedish organisationsnummer, the German \
+(e.g. 0000007-8), the Swedish organisationsnummer, the German \
 Handelsregisternummer. 🔴 THE TWO ARE DIFFERENT FIELDS EVEN WHEN THEY SHARE \
 DIGITS — a country's VAT number and its national registration number are often \
 built from the same digits, and they are STILL two values: copy each into its \
@@ -650,8 +655,8 @@ character for character as the page prints it, however long it is; an ISO \
 copied verbatim. Report null rather than an invoice number dressed up as a \
 reference.""",
     "locale_seller_identifiers": """\
-    "vat": "EU VAT number with its country prefix exactly as printed (e.g. FI12345671), or a non-EU national tax registration number, or null",
-    "business_id": "national registration number exactly as printed (e.g. Finnish Y-tunnus 7654321-2), never derived from the VAT number, or null",""",
+    "vat": "EU VAT number with its country prefix exactly as printed (e.g. FI00000158), or a non-EU national tax registration number, or null",
+    "business_id": "national registration number exactly as printed (e.g. Finnish Y-tunnus 0000007-8), never derived from the VAT number, or null",""",
     "locale_seller_region": """\
     "state_code": "2-letter code of the state, province or region when the address prints one — most EU addresses do not — or null",""",
     "locale_seller_bank": """\
@@ -676,8 +681,11 @@ reference.""",
 - A VAT number keeps its country prefix (e.g. FI, DE, SE, NL), and is copied as printed — never built out of a national registration number""",
 }
 
-# Same schema keys as the other blocks, but no country's tax, identifier or
-# payment vocabulary is assumed.
+# 🔴 NAMES NO COUNTRY, ON PURPOSE. It is not a weaker US block: every schema
+# key is here and every procedure is above it. What it does not do is tell the
+# model that one country's identifier, tax or payment vocabulary is the one to
+# expect — because on a deployment whose country nobody has established, that
+# would be a guess dressed as an instruction.
 _GENERIC_BLOCK = {
     "locale_origin": """\
 Documents arrive \
@@ -759,8 +767,15 @@ LOCALE_BLOCKS = {
     LOCALE_GENERIC: _GENERIC_BLOCK,
 }
 
-# EU plus the rest of the EEA, which shares the VAT, IBAN/BIC and payment
-# reference vocabulary. Other VAT countries get the generic block.
+# EU plus the rest of the EEA. The block is about VAT vocabulary, IBAN/BIC and
+# structured payment references, which Norway, Iceland and Liechtenstein share
+# with the EU proper, so the set is wider than the political one on purpose.
+#
+# ⚠️ IT IS A LIST OF COUNTRIES THAT HAVE BEEN THOUGHT ABOUT, NOT A LIST OF
+# COUNTRIES THAT USE VAT. Most of the world charges VAT or GST; this set names
+# the ones whose identifier and payment wording the EU block actually fits. A
+# country that is not here gets the generic block and a log line, which is the
+# honest answer, rather than the nearest-looking one.
 _EU_EEA = frozenset("""
     AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI
     ES SE IS LI NO
@@ -770,9 +785,17 @@ _EU_EEA = frozenset("""
 def locale_for_country(country_code):
     """Which locale block a 2-letter ISO country code selects, or None.
 
-    None means no block fits that country; the caller logs it and falls back
-    to `LOCALE_GENERIC`. Canada, for example, gets None: it has no EIN, ABA
-    routing number or state sales tax.
+    🔴 None MEANS "NOTHING HERE NAMES A BLOCK FOR THAT COUNTRY", and it is a
+    different answer from `LOCALE_GENERIC`. The caller is expected to say so in
+    a log line before falling back, because a deployment running the generic
+    block is running a prompt weaker than either shipped one and nothing on the
+    resulting bill would show it.
+
+    It never answers `LOCALE_US` for a country that is not the United States.
+    Canada is the case worth naming: it is the closest country to the US block
+    and it has none of the three things that block is about — no EIN, no ABA
+    routing number, no state sales tax — so it gets the generic block until
+    somebody writes a Canadian one.
     """
     code = str(country_code or "").strip().upper()
     if len(code) != 2:
@@ -787,12 +810,27 @@ def locale_for_country(country_code):
 def build_system_prompt(locale=None):
     """The procedures with one locale block substituted in.
 
-    ``locale`` is a shipped block's name (`LOCALE_US`, …) or a mapping of every
-    name in `SLOT_NAMES` to its text, as a custom prompt profile passes it.
+    ``locale`` is a shipped block's name (`LOCALE_US`, …) or a block itself —
+    a mapping of every name in `SLOT_NAMES` to its text, which is what a custom
+    prompt profile passes. A mapping is composed as given, with no fallback.
 
-    Returns the prompt still carrying `{categories_block}`. An unknown or
-    missing ``locale`` composes `LOCALE_GENERIC`, never `LOCALE_US`, and logs a
-    warning.
+    Returns the prompt still carrying `{categories_block}`: `extract_invoice`
+    fills that, and `SYSTEM_PROMPT.format(categories_block=...)` has to keep
+    working because it is how every prompt test in this module reads it.
+
+    An unknown or missing ``locale`` composes `LOCALE_GENERIC` — never
+    `LOCALE_US` — and says so at WARNING, so a typo in a locale name cannot
+    quietly ship one country's prompt to another's deployment.
+
+    🔴 THE MISSING CASE USED TO BE SILENT, AND THE DOCSTRING ABOVE ALREADY
+    CLAIMED IT WAS NOT (found in review). `str(locale or "").strip().lower() or
+    LOCALE_GENERIC` turned a missing locale into the KNOWN key "generic", so
+    `LOCALE_BLOCKS.get` succeeded and the warning branch below was never
+    reached. On the Odoo path `_ai_prompt_locale` logs its own line, so the gap
+    was invisible there and total everywhere else — and
+    `ClaudeInvoiceExtractor(locale=None)` is the documented default, which is
+    exactly where "this extractor is running the weakest prompt we ship" most
+    needed saying.
     """
     if isinstance(locale, Mapping):
         return compose_system_prompt(locale, "custom")
@@ -824,15 +862,21 @@ def build_system_prompt(locale=None):
 def compose_system_prompt(block, label):
     """Substitute ``block`` into the procedures; ``label`` names it in errors.
 
-    Braces in the block are escaped, because the result later goes through
-    `str.format` to fill `{categories_block}`.
+    🔴 BRACES IN THE BLOCK ARE ESCAPED. The result goes through `str.format`
+    to fill `{categories_block}`, so a `{` typed into a custom profile would
+    either raise there or swallow text. No shipped block contains a brace, so
+    for them this is a no-op and the composed US prompt stays byte-identical.
     """
     block = {
         name: str(text).replace("{", "{{").replace("}", "}}")
         for name, text in block.items()
     }
-    # Checked before substituting, so a short block raises a clear ValueError
-    # rather than a KeyError from inside the lambda.
+    # 🔴 CHECKED BEFORE THE SUBSTITUTION, NOT AFTER IT (found in review). A
+    # slot the template declares and a block does not fill never reached the
+    # `ValueError` below: `_SLOT_RE.sub(lambda m: block[m.group(1)], ...)`
+    # raised `KeyError` from inside the lambda first. Loud, so never dangerous
+    # — but it is not the error this function documents, and it names a bare
+    # dict key rather than saying which locale block is short of what.
     missing = sorted(set(_SLOT_RE.findall(PROCEDURES)) - set(block))
     if missing:
         raise ValueError(
@@ -842,7 +886,8 @@ def compose_system_prompt(block, label):
 
     prompt = _SLOT_RE.sub(lambda m: block[m.group(1)], PROCEDURES)
     if "@@" in prompt:
-        # A marker the slot regex cannot parse, such as `@@locale-tax@@`.
+        # A marker the slot regex cannot parse — `@@locale-tax@@`, `@@1@@`.
+        # Loud, because the alternative is shipping it to the API.
         raise ValueError(
             "the %r prompt locale left a slot unfilled: %s"
             % (label, _unfilled_markers(prompt))
@@ -851,7 +896,14 @@ def compose_system_prompt(block, label):
 
 
 def _unfilled_markers(prompt):
-    """Describe the markers left in ``prompt`` after substitution."""
+    """What to print when `@@` survives substitution.
+
+    🔴 IT USED TO PRINT `[]` (found in review). The old message read
+    `_SLOT_RE.findall(prompt)` — but `_SLOT_RE` is the regex that just FAILED to
+    match, by construction: anything it matches has already been substituted. So
+    the one error whose whole job is to name the broken slot could only ever
+    name an empty list. Measured, on `@@locale-tax@@`.
+    """
     found = sorted(set(_ANY_MARKER_RE.findall(prompt)))
     if found:
         return ", ".join(found)
@@ -860,29 +912,41 @@ def _unfilled_markers(prompt):
             % prompt[max(0, at - 40):at + 40])
 
 
-# The US prompt. The prompt actually sent is `build_system_prompt(self.locale)`,
-# chosen per company; the two coincide only for a US company.
+# The prompt as the US deployment runs it, and as every pre-existing prompt test in
+# this module reads it. 🔴 It is NOT necessarily the prompt that is sent: that
+# is `build_system_prompt(self.locale)`, chosen from the company's country. The
+# two coincide only on a US company, which is why
+# `test_the_composed_prompt_is_the_one_sent` asserts on the client's `system`
+# argument rather than on this name.
 SYSTEM_PROMPT = build_system_prompt(LOCALE_US)
 
 
-class ClaudeExtractionError(Exception):
+class ClaudeExtractionError(InvoiceDataError):
     """Raised when Claude API call fails or returns invalid data.
 
-    ``data`` carries the parsed JSON when validation failed after parsing, so
-    callers can store it for correction and re-import without a new API call.
+    ``data`` carries the parsed JSON when the failure is a post-parse validation
+    error (e.g. a missing required field). Callers persist it so a human can see
+    exactly what Claude extracted and fix/re-import it without a new API call.
     """
 
-    def __init__(self, message, data=None):
-        super().__init__(message)
-        self.data = data
+
+# `test_connection` and `list_models` are deliberately absent: "Test Connection"
+# and "Sync Models" live in `goodahead_claude`'s own settings block, against the
+# same key. Two buttons doing the same thing against two clients is how the two
+# drifted apart on the source project.
 
 
-class ClaudeInvoiceExtractor:
-    """Turns an invoice PDF into the extraction dict.
+class ClaudeInvoiceExtractor(InvoiceDataValidator):
+    """Turns an invoice PDF into the extraction dict, using whatever client it
+    is given.
 
-    ``client`` is `goodahead.claude.client`, injected so tests can pass a stub
-    and never reach the network.
+    ``client`` is `goodahead.claude.client` (an AbstractModel). It is injected
+    rather than imported so that a test can pass a stub and NOTHING reaches the
+    network — which is the only way these tests can run at all, since a real
+    call costs money and the source project has already had one retry storm.
     """
+
+    error_class = ClaudeExtractionError
 
     def __init__(self, client, model=None, company=None,
                  currency_from_country=None, currency_is_active=None,
@@ -890,16 +954,25 @@ class ClaudeInvoiceExtractor:
         self.client = client
         self.model = model
         self.company = company
-        # A shipped locale name or a custom block mapping (see
-        # `build_system_prompt`). None composes the country-neutral block.
+        # Which locale block the prompt is composed with — see
+        # `build_system_prompt`. It is a plain string rather than a country
+        # code because the SELECTION is a policy question
+        # (`account_move._ai_prompt_locale` answers it from the company, and
+        # logs when it cannot) while the COMPOSITION is a text question, and
+        # keeping them apart is what lets a test exercise either one alone.
+        # A custom prompt profile passes its own block here, as a mapping.
+        #
+        # 🔴 Left None it composes the COUNTRY-NEUTRAL block, never the US one.
+        # Every lib-only test in this module constructs the extractor without a
+        # locale, so a US default would have made the module's own suite
+        # measure one country while reporting that it measured the rule.
         self.locale = locale
-        # `currency_from_country(country_code) -> "USD" | None`, injected so
-        # this module needs no ORM access. None disables the country fallback.
-        self.currency_from_country = currency_from_country
-        # `currency_is_active(name) -> bool`: whether this database trades in
-        # the currency. A separate question from the country's currency; None
-        # answers yes.
-        self.currency_is_active = currency_is_active
+        # The two injected currency callables are the validator's — see
+        # `InvoiceDataValidator.__init__` in the import core.
+        super().__init__(
+            currency_from_country=currency_from_country,
+            currency_is_active=currency_is_active,
+        )
 
     def extract_invoice(self, pdf_bytes, expense_categories=None):
         """Send PDF to Claude API and extract structured invoice data.
@@ -915,6 +988,11 @@ class ClaudeInvoiceExtractor:
             ClaudeExtractionError: on API failure or invalid response
         """
         categories_block = self._build_categories_block(expense_categories)
+        # F31's composition, in the one order the text allows:
+        # procedures + locale block + categories. The locale block is
+        # substituted at thirteen named slots rather than appended, because
+        # nine of them are inside the JSON schema — see the block comment above
+        # `PROCEDURES`.
         system_prompt = build_system_prompt(self.locale).format(
             categories_block=categories_block
         )
@@ -940,11 +1018,28 @@ class ClaudeInvoiceExtractor:
             }
         ]
 
-        # `max_tokens`, `timeout` and `requires_pdf` are passed per call so the
-        # shared client's defaults stay untouched for its other users. A None
-        # model lets the client resolve the company default or the newest
-        # registered model; `requires_pdf` keeps it from picking one that cannot
-        # read PDFs.
+        # 🔴 `max_tokens` and `timeout` are passed HERE, per call, and never set
+        # as defaults on `goodahead_claude`. That client is shared with fraud
+        # detection; its defaults are 4096 / 120 s, and moving them would move
+        # fraud detection too.
+        #
+        # `model=self.model` may be None, which is the normal case: the client
+        # then resolves the company default and, failing that, the newest model
+        # in the fetched registry. A literal model id is deliberately not
+        # supplied as a fallback — see the module docstring.
+        #
+        # `cache_static_system` is left at its default: the system prompt is the
+        # same long block on every invoice, so it caches, while the PDF (the
+        # part that differs) is in `messages` and does not.
+        #
+        # 🔴 `requires_pdf=True` is the whole of this feature's claim on the shared
+        # client, and it is asked for PER CALL for exactly the reason `max_tokens` and
+        # `timeout` are. `goodahead_claude` records `pdf_supported` for every model it
+        # syncs and, until 19.0.1.4.0, NOTHING READ IT: the first sync that brought in a
+        # newer model without PDF support would have silently retargeted this prompt —
+        # which sends a PDF and nothing else — at a model that cannot read the document.
+        # Fraud detection sends text, pins its own model, and passes `requires_pdf`
+        # nowhere, so it is untouched by this.
         try:
             result = self.client.messages_create(
                 messages=messages,
@@ -956,8 +1051,10 @@ class ClaudeInvoiceExtractor:
                 requires_pdf=True,
             )
         except Exception as e:
-            # The caller treats every failure here as terminal; only the
-            # message matters.
+            # Including `goodahead_claude`'s ClaudeAPIError and the UserError it
+            # raises when no model can be resolved. The caller treats every
+            # failure here as terminal, so the type does not need preserving —
+            # the message does.
             raise ClaudeExtractionError(f"Claude API request failed: {e}") from e
 
         usage = result.get("usage", {}) or {}
@@ -1000,9 +1097,18 @@ class ClaudeInvoiceExtractor:
                 f"Raw response:\n{text_content[:500]}"
             ) from e
 
-        # Only this method holds both the PDF bytes and the extraction. The
-        # verdict is stored in `data`, so the re-import path can read it
-        # without the PDF.
+        # 🔴 THE SEAM, AND IT IS HERE FOR A REASON THE HOUSE RULE NAMES: the
+        # plan clusters by intent, the chain cares where a rule SITS. The
+        # intent is "the currency rule", which lives in
+        # `_resolve_currency_from_country`; the chain needs the PDF BYTES, and
+        # this method is the only point that holds them and the extraction at
+        # the same time. `_validate_extraction` takes `data` alone and is
+        # called from nowhere else, so widening its signature would move the
+        # bytes through a method that has no other use for them. The verdict
+        # goes INTO `data` instead — which also means it is stored, auditable,
+        # and read by the re-import path in
+        # `account_move._ai_surviving_currency_marker` without anything having
+        # to keep a second copy of the PDF.
         if isinstance(data, dict):
             data[CURRENCY_MARKING_KEY] = currency_marking_verdict(pdf_bytes, data)
 
@@ -1017,336 +1123,3 @@ class ClaudeInvoiceExtractor:
         for cat in categories:
             lines.append(f'- "{cat["code"]}": {cat["name"]}')
         return "\n".join(lines)
-
-    def _currency_is_tradeable(self, currency_name):
-        """Does this database trade in that currency? Yes when not injected."""
-        if not self.currency_is_active:
-            return True
-        return bool(self.currency_is_active(currency_name))
-
-    def _currency_is_usable(self, currency):
-        """Exactly three ASCII letters, the shape core's `_import_currency` matches."""
-        if not isinstance(currency, str):
-            return False
-        currency = currency.strip()
-        return (
-            len(currency) == 3 and currency.isascii() and currency.isalpha()
-        )
-
-    def _resolve_currency_from_country(self, data):
-        """A domestic invoice that prints no currency is in the domestic currency.
-
-        Applies only when the page prints no currency marking at all (see
-        `nothing_was_printed`) and seller and buyer are in the same country,
-        both taken from the document. Any printed marking blocks it: an
-        ambiguous symbol such as `¥` or `$` must not be settled by the buyer's
-        country. Mutates ``data`` in place.
-
-        The prompt asks the model for the same inference, so an already-set
-        currency is only marked as inferred, never rewritten, and only when it
-        equals the country's own currency. The marker means "no currency was
-        printed, so the value was deduced", not "the address is why"; the
-        chatter note in `account_move._ai_post_process` is worded to match.
-        """
-        if not self.currency_from_country:
-            return
-
-        # An already-set currency may be marked but never written.
-        already_set = self._currency_is_usable(data.get("currency"))
-
-        if not nothing_was_printed(data):
-            return
-
-        seller_cc = one_country_on_both_sides(data)
-        if not seller_cc:
-            return
-
-        resolved = self.currency_from_country(seller_cc)
-        if not self._currency_is_usable(resolved):
-            # No usable currency for the country. With no currency set, the
-            # required-field check below fails the import and stores the JSON.
-            _logger.info(
-                "AI invoice import: both parties are in %s and nothing was "
-                "printed, but %r gives no usable currency — the bill is left "
-                "exactly as the extraction had it (%s)",
-                seller_cc,
-                seller_cc,
-                "currency already %r" % data.get("currency")
-                if already_set
-                else "no currency",
-            )
-            return
-
-        resolved = resolved.strip().upper()
-        if already_set and data["currency"].strip().upper() != resolved:
-            # Something other than the country settled the currency: leave it
-            # alone and do not mark it.
-            _logger.info(
-                "AI invoice import: nothing printed and both parties in %s, "
-                "but the extraction says %s and %s would give %s — something "
-                "other than the country settled it, so it is left alone and "
-                "not marked",
-                seller_cc,
-                data["currency"],
-                seller_cc,
-                resolved,
-            )
-            return
-
-        if not already_set and not self._currency_is_tradeable(resolved):
-            # Do not choose an archived currency. Core's `_import_currency`
-            # would accept it with only a log line, and with no maintained rate
-            # (1.0) the company-currency figures would silently be wrong. This
-            # does not apply when the extraction already set the currency.
-            _logger.warning(
-                "AI invoice import: nothing printed and both parties in %s, "
-                "whose currency is %s — but %s is archived on this database, "
-                "so it is not written. Activate it or set the currency by "
-                "hand on the stored JSON",
-                seller_cc,
-                resolved,
-                resolved,
-            )
-            return
-
-        data["currency"] = resolved
-        data[CURRENCY_INFERRED_KEY] = seller_cc
-        _logger.info(
-            "AI invoice import: no currency symbol or code on the document and "
-            "both parties are in %s — currency %s is the one "
-            "res.country.currency_id gives for it (%s)",
-            seller_cc,
-            resolved,
-            "already set by the extraction" if already_set else "set here",
-        )
-
-    def _validate_extraction(self, data):
-        """Validate that Claude's extraction has required fields."""
-        if not isinstance(data, dict):
-            raise ClaudeExtractionError(
-                f"Expected JSON object, got {type(data).__name__}"
-            )
-
-        # Before the required-field check, which would reject a null currency.
-        self._resolve_currency_from_country(data)
-
-        # `currency` is required: downstream, a missing or unknown code would
-        # silently become a default currency. Failing stores the extraction so
-        # it can be corrected and re-imported without a new API call.
-        required_fields = [
-            "type",
-            "invoice_number",
-            "issue_date",
-            "currency",
-            "seller",
-            "lines",
-            "totals",
-        ]
-        missing = [f for f in required_fields if not data.get(f)]
-        if missing:
-            raise ClaudeExtractionError(
-                f"Missing required fields in extraction: {', '.join(missing)}",
-                data=data,
-            )
-
-        # A symbol such as "$" or "￥" would match no currency in core and
-        # silently become the company currency.
-        currency = data["currency"]
-        if not self._currency_is_usable(currency):
-            raise ClaudeExtractionError(
-                f"Currency {currency!r} is not a 3-letter ISO 4217 code "
-                f"(e.g. USD, EUR, CNY)",
-                data=data,
-            )
-
-        if data["type"] not in ("Invoice", "CreditNote"):
-            raise ClaudeExtractionError(
-                f"Invalid document type: {data['type']}. Expected 'Invoice' or 'CreditNote'",
-                data=data,
-            )
-
-        if not isinstance(data["lines"], list) or not data["lines"]:
-            raise ClaudeExtractionError(
-                "No invoice lines extracted from the document", data=data
-            )
-
-        seller = data["seller"]
-        if not isinstance(seller, dict) or not seller.get("name"):
-            raise ClaudeExtractionError(
-                "Seller name is missing from extraction", data=data
-            )
-
-        self._validate_arithmetic(data)
-
-    # Arithmetic checks. Each failure carries the parsed JSON and names the
-    # figure at fault, so it can be corrected and re-imported without a new API
-    # call. The checks are deliberately loose enough not to fail correct invoices.
-
-    def _number(self, container, key, where, data, required=True, nullable=False):
-        """One numeric field, or a named failure.
-
-        A null amount fails rather than becoming 0.00 downstream.
-        `required=False` tolerates an absent key, never a null one.
-        `nullable=True` returns a null as `None` (used for a line's tax amount).
-        """
-        if key not in container:
-            if not required:
-                return None
-            raise ClaudeExtractionError(
-                f"{where}: {key} is missing from the extraction. It is an amount the "
-                f"bill is built from, and a missing amount must not be read as zero.",
-                data=data,
-            )
-        value = container[key]
-        if value is None and nullable:
-            return None
-        if value is None:
-            raise ClaudeExtractionError(
-                f"{where}: {key} is null. An amount Claude could not read must not "
-                f"become 0.00 on the bill — fill it in below and re-import, or clear "
-                f"the whole import if the document really does not state it.",
-                data=data,
-            )
-        # `bool` is an `int` in Python, and `True` would otherwise reconcile as 1.0.
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ClaudeExtractionError(
-                f"{where}: {key} is {value!r}, which is not a number. Amounts must be "
-                f"JSON numbers — a string has not been through the NUMBERS procedure "
-                f"and its separators mean nothing yet.",
-                data=data,
-            )
-        return float(value)
-
-    def _reconciles(self, actual, expected, accumulated=True):
-        """Within tolerance? See `TOLERANCE_ABS` / `TOLERANCE_REL`.
-
-        `accumulated=False` drops the relative term, for comparing two figures
-        that restate the same number rather than a sum of rounded parts.
-        """
-        tolerance = TOLERANCE_ABS
-        if accumulated:
-            tolerance = max(tolerance, TOLERANCE_REL * abs(expected))
-        return abs(actual - expected) <= tolerance
-
-    def _validate_arithmetic(self, data):
-        """Reconcile lines, tax and totals against each other.
-
-        Signs are left alone: every check is linear, so an all-negative credit
-        note reconciles like an all-positive one, while sections that disagree
-        about the sign are caught.
-        """
-        totals = data["totals"]
-        if not isinstance(totals, dict):
-            raise ClaudeExtractionError(
-                f"'totals' is {type(totals).__name__}, expected an object with "
-                f"line_extension / tax_exclusive / tax_inclusive / payable",
-                data=data,
-            )
-        line_extension = self._number(totals, "line_extension", "totals", data)
-        tax_exclusive = self._number(totals, "tax_exclusive", "totals", data)
-        tax_inclusive = self._number(totals, "tax_inclusive", "totals", data)
-        payable = self._number(totals, "payable", "totals", data)
-
-        line_sum = 0.0
-        for index, line in enumerate(data["lines"], start=1):
-            if not isinstance(line, dict):
-                raise ClaudeExtractionError(
-                    f"Line {index} is {type(line).__name__}, expected an object",
-                    data=data,
-                )
-            where = f"Line {index} ({line.get('name') or 'unnamed'})"
-            line_total = self._number(line, "line_total", where, data)
-            # A null line tax is accepted: receipts often print tax only for the
-            # whole document. The document tax comes from the subtotals and
-            # Odoo takes each line's tax from its rate; a resulting total
-            # mismatch is flagged by `account.move.ai_total_mismatch`.
-            self._number(line, "tax_amount", where, data, nullable=True)
-            quantity = self._number(line, "quantity", where, data, required=False)
-            price_unit = self._number(line, "price_unit", where, data, required=False)
-            self._number(line, "tax_percent", where, data, required=False)
-            line_sum += line_total
-            self._validate_line_magnitude(where, quantity, price_unit, line_total, data)
-
-        subtotals = data.get("tax_subtotals") or []
-        if not isinstance(subtotals, list):
-            raise ClaudeExtractionError(
-                f"'tax_subtotals' is {type(subtotals).__name__}, expected a list",
-                data=data,
-            )
-        subtotal_tax = 0.0
-        for index, subtotal in enumerate(subtotals, start=1):
-            if not isinstance(subtotal, dict):
-                raise ClaudeExtractionError(
-                    f"Tax subtotal {index} is {type(subtotal).__name__}, expected an "
-                    f"object",
-                    data=data,
-                )
-            where = f"Tax subtotal {index}"
-            self._number(subtotal, "taxable_amount", where, data)
-            subtotal_tax += self._number(subtotal, "tax_amount", where, data)
-            self._number(subtotal, "tax_percent", where, data, required=False)
-
-        if subtotals:
-            tax_total = subtotal_tax
-            tax_source = f"the {len(subtotals)} tax subtotal(s)"
-        else:
-            # No subtotals: use the lines' own tax. An untaxed document then
-            # reduces to "tax_exclusive == tax_inclusive".
-            tax_total = sum(line.get("tax_amount") or 0.0 for line in data["lines"])
-            tax_source = "the lines' own tax amounts (no tax subtotals were extracted)"
-
-        if not self._reconciles(line_sum, line_extension):
-            raise ClaudeExtractionError(
-                f"The line totals do not add up to the document total: the "
-                f"{len(data['lines'])} line(s) sum to {line_sum:.2f} but "
-                f"totals.line_extension says {line_extension:.2f} (out by "
-                f"{line_sum - line_extension:.2f}). One of those two figures is "
-                f"misread, or a line is missing.",
-                data=data,
-            )
-
-        if not self._reconciles(tax_exclusive + tax_total, tax_inclusive):
-            raise ClaudeExtractionError(
-                f"The tax does not add up: totals.tax_exclusive {tax_exclusive:.2f} "
-                f"plus {tax_total:.2f} of tax from {tax_source} is "
-                f"{tax_exclusive + tax_total:.2f}, but totals.tax_inclusive says "
-                f"{tax_inclusive:.2f} (out by "
-                f"{tax_exclusive + tax_total - tax_inclusive:.2f}).",
-                data=data,
-            )
-
-        if not self._reconciles(payable, tax_inclusive, accumulated=False):
-            raise ClaudeExtractionError(
-                f"totals.payable {payable:.2f} is not totals.tax_inclusive "
-                f"{tax_inclusive:.2f} (out by {payable - tax_inclusive:.2f}). This "
-                f"schema has no slot for a prepayment, a rounding line or a credit "
-                f"applied against the bill, so a difference here means one of the two "
-                f"was misread.",
-                data=data,
-            )
-
-    def _validate_line_magnitude(self, where, quantity, price_unit, line_total, data):
-        """Catch a quantity or unit price misread by a factor of 10 or more.
-
-        The document sums cannot see this: the line total is right, and the
-        generated unit price is derived from it. See `LINE_RATIO_LIMIT`.
-        """
-        if quantity is None or price_unit is None:
-            return
-        gross = abs(quantity) * abs(price_unit)
-        net = abs(line_total)
-        # A zero on either side (free-of-charge line) says nothing.
-        if not gross or not net:
-            return
-        ratio = gross / net if gross > net else net / gross
-        if ratio < LINE_RATIO_LIMIT:
-            return
-        raise ClaudeExtractionError(
-            f"{where}: quantity {quantity:g} × unit price {price_unit:g} is "
-            f"{gross:.2f}, which is {ratio:.0f}× the line total {line_total:.2f}. A "
-            f"discount cannot account for that; one of the three was read with its "
-            f"decimal point or its thousands separator in the wrong place. The "
-            f"document's own totals CANNOT catch this — they are built from the line "
-            f"total, which is the figure that is right.",
-            data=data,
-        )

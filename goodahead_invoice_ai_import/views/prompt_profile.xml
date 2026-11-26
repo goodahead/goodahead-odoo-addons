@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
 <odoo>
     <record id="view_prompt_profile_list" model="ir.ui.view">
         <field name="name">goodahead.invoice.prompt.profile.list</field>
@@ -102,7 +104,7 @@
     <menuitem
         id="menu_prompt_profile"
         name="Extraction Prompts"
-        parent="menu_ai_invoice_import_config"
+        parent="goodahead_invoice_import.menu_ai_invoice_import_config"
         action="action_prompt_profile"
         sequence="20"
     />

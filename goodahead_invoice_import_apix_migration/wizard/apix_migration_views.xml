@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-07: detect · carry over · shadow · live · switch back. -->
+    <record id="goodahead_apix_migration_view_form" model="ir.ui.view">
+        <field name="name">goodahead.apix.migration.form</field>
+        <field name="model">goodahead.apix.migration</field>
+        <field name="arch" type="xml">
+            <form string="APIX migration tool">
+                <header>
+                    <field name="step" widget="statusbar"/>
+                </header>
+                <field name="connection_id" invisible="1"/>
+                <field name="source_count" invisible="1"/>
+                <!-- error — a migration source does not match its connector -->
+                <div name="banner_source" class="alert alert-danger" role="alert" invisible="not source_message">
+                    <field name="source_message"/>
+                </div>
+                <group>
+                    <field name="company_id" groups="base.group_multi_company"/>
+                    <!-- normally one source; a choice only when several have credentials -->
+                    <field name="source_code" invisible="step != 'detect' or source_count &lt; 2"
+                           required="step == 'detect' and source_count &gt; 1"/>
+                </group>
+
+                <!-- step 1 — detect / step 2 — carry over -->
+                <div name="step_detect" invisible="step != 'detect'">
+                    <div invisible="not source_found">
+                        <p>An earlier APIX connection was found for this company.</p>
+                        <group>
+                            <field name="source_environment" string="Environment"/>
+                            <field name="source_business_id" string="Business ID"/>
+                        </group>
+                        <p class="text-muted">
+                            Carrying over copies the transfer ID, transfer key, environment and
+                            Business ID. No APIX web password is ever read or copied.
+                            Receiving starts in shadow: nothing is imported and nothing is
+                            marked received until you switch to live.
+                        </p>
+                    </div>
+                    <div name="nothing_found" invisible="source_found">
+                        <p>No earlier APIX connection was found for this company: there is
+                            nothing to migrate. Connect this add-on to APIX by hand instead.</p>
+                    </div>
+                </div>
+
+                <!-- step 3 — shadow -->
+                <div name="step_shadow" invisible="step != 'shadow'">
+                    <group string="Shadow run">
+                        <field name="receiving_since" string="Since"/>
+                        <field name="connection_status" string="Connection"/>
+                        <field name="connection_status_message" string="Details"/>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="count_would_import" string="Would import"/>
+                            <field name="count_would_duplicate" string="Duplicates"/>
+                            <field name="count_imported_before" string="Imported before"/>
+                        </group>
+                        <group>
+                            <field name="count_would_be_possibly_lost" string="Possibly lost"/>
+                            <field name="count_would_fail" string="Would fail"/>
+                            <field name="count_unaccounted" string="Not classified yet"/>
+                        </group>
+                    </group>
+                    <div name="shadow_not_ready" class="alert alert-warning" role="status"
+                         invisible="shadow_ready">
+                        Recommended before switching: at least one week of shadow run
+                        (<field name="shadow_days" class="oe_inline"/> days so far) with no
+                        package left unclassified, and every difference explained.
+                    </div>
+                </div>
+
+                <!-- step 4 — live / switch back — blocked -->
+                <div name="step_live" invisible="step != 'live'">
+                    <group>
+                        <field name="receiving_since" string="Live since"/>
+                    </group>
+                    <div name="switch_back_blocked" class="alert alert-warning" role="status"
+                         invisible="not unconfirmed_count">
+                        <field name="unconfirmed_count" class="oe_inline"/> records not yet
+                        confirmed as received by APIX — switching back is possible once APIX
+                        has confirmed them.
+                    </div>
+                </div>
+
+                <!-- switch back — confirm -->
+                <div name="step_switch_back" invisible="step != 'switch_back'">
+                    <p>
+                        These packages are not settled. When the earlier APIX connector
+                        resumes, it imports the ones APIX still shows as not received; packages
+                        APIX shows as received are not fetched again by it. Everything this
+                        add-on imported or closed is already confirmed as received at APIX.
+                    </p>
+                    <field name="unsettled_ids" readonly="1">
+                        <list>
+                            <field name="name"/>
+                            <field name="seller_name"/>
+                            <field name="invoice_number"/>
+                            <field name="state"/>
+                            <field name="apix_status"/>
+                        </list>
+                    </field>
+                </div>
+
+                <footer>
+                    <button name="action_carry_over" type="object" string="Carry over and start shadow run"
+                            class="btn-primary" invisible="step != 'detect' or not source_found"/>
+                    <button name="action_connect_manually" type="object" string="Connect manually"
+                            invisible="step != 'detect'"/>
+                    <button name="action_open_shadow_results" type="object" string="Open in inbox"
+                            invisible="step != 'shadow'"/>
+                    <button name="action_switch_to_live" type="object" string="Switch to live"
+                            class="btn-primary" invisible="step != 'shadow'"
+                            confirm="The earlier APIX connector stops fetching for this company and this add-on starts importing. Continue?"/>
+                    <button name="action_switch_back" type="object" string="Switch back"
+                            invisible="step != 'live'"/>
+                    <button name="action_confirm_switch_back" type="object" string="Confirm switch back"
+                            class="btn-primary" invisible="step != 'switch_back'"/>
+                    <button name="action_cancel_switch_back" type="object" string="Stay live"
+                            invisible="step != 'switch_back'"/>
+                    <button special="cancel" string="Close"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_apix_migration" model="ir.actions.act_window">
+        <field name="name">APIX migration tool</field>
+        <field name="res_model">goodahead.apix.migration</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="group_ids" eval="[(4, ref('account.group_account_manager'))]"/>
+    </record>
+
+</odoo>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-01: the customer invoice / credit note. "Send via APIX" (primary
+         when ready), the readiness line with what is missing and where it is
+         fixed, the transmit method, the copy warning, the in-progress note and
+         the sending badge. The button shows only for posted customer documents
+         of a company whose sending is on. -->
+    <record id="account_move_view_form_send_apix" model="ir.ui.view">
+        <field name="name">account.move.form.send.apix</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_invoice_sent']" position="before">
+                <button name="action_apix_send" type="object" string="Send via APIX"
+                        class="oe_highlight" groups="account.group_account_invoice"
+                        invisible="not apix_send_available or not send_ready"/>
+                <button name="action_apix_send" type="object" string="Send via APIX"
+                        groups="account.group_account_invoice"
+                        invisible="not apix_send_available or send_ready"/>
+                <!-- SCR-13: developer mode only; builds and checks, sends nothing. -->
+                <button name="action_apix_regenerate_check" type="object"
+                        string="Regenerate and check" groups="base.group_no_one"
+                        invisible="state != 'posted' or move_type not in ('out_invoice', 'out_refund')"/>
+            </xpath>
+            <xpath expr="//header/field[@name='state']" position="before">
+                <field name="send_state" widget="badge"
+                       decoration-success="send_state == 'sent'"
+                       decoration-danger="send_state in ('refused', 'failed')"
+                       decoration-warning="send_state == 'in_progress'"
+                       invisible="send_state not in ('sent', 'refused', 'failed', 'in_progress')"/>
+            </xpath>
+            <xpath expr="//sheet" position="before">
+                <div class="alert alert-danger mb-0" role="alert" invisible="not send_copy_warning">
+                    <field name="send_copy_warning" readonly="1"/>
+                </div>
+                <div class="alert alert-warning mb-0" role="alert" invisible="not send_in_progress">
+                    <field name="send_in_progress_info" readonly="1"/>
+                </div>
+                <div class="alert alert-info mb-0" role="alert"
+                     invisible="send_readiness_level not in ('ready', 'warning', 'off')">
+                    <field name="send_readiness_html" readonly="1" nolabel="1"/>
+                </div>
+                <div class="alert alert-warning mb-0 d-flex align-items-start gap-2" role="alert"
+                     invisible="send_readiness_level != 'not_ready'">
+                    <field name="send_readiness_html" readonly="1" nolabel="1" class="flex-grow-1"/>
+                    <button name="action_apix_open_fix" type="object" string="Fix e-invoice address"
+                            class="btn-link p-0" groups="account.group_account_invoice"
+                            invisible="transmit_method != 'einvoice'"/>
+                </div>
+            </xpath>
+            <xpath expr="//group[@id='header_left_group']" position="inside">
+                <field name="einvoice_buyer_reference_filled" invisible="1"/>
+                <field name="transmit_method"
+                       invisible="move_type not in ('out_invoice', 'out_refund')"/>
+            </xpath>
+            <!-- SCR-02: the delivery tab. Every attempt, newest first, read-only;
+                 the pre-install mark is a banner line, not a row; a queued row
+                 can be cancelled. -->
+            <xpath expr="//page[@id='other_tab']" position="after">
+                <page string="Delivery" name="apix_delivery"
+                      invisible="move_type not in ('out_invoice', 'out_refund')"
+                      groups="account.group_account_invoice">
+                    <field name="sent_before_install" invisible="1"/>
+                    <div class="alert alert-info mb-2" role="alert" invisible="not sent_before_install">
+                        Sent before this add-on was installed — channel unknown (counts as sent).
+                    </div>
+                    <div class="text-muted mb-2" invisible="not delivery_empty">Not sent yet.</div>
+                    <field name="send_attempt_ids" readonly="1" nolabel="1"
+                           invisible="not send_attempt_ids">
+                        <list create="0" edit="0" delete="0"
+                              decoration-danger="state in ('refused', 'failed')"
+                              decoration-muted="state in ('cancelled', 'downloaded')">
+                            <field name="display_date"/>
+                            <field name="started_by_label"/>
+                            <field name="channel"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state in ('accepted', 'sent')"
+                                   decoration-danger="state in ('refused', 'failed')"
+                                   decoration-warning="state in ('queued', 'running')"/>
+                            <field name="counts_as_sent" string="Sent"/>
+                            <field name="reason"/>
+                            <field name="warning_text" optional="show"/>
+                            <field name="apix_batch_id" optional="show"/>
+                            <field name="apix_document_id" optional="hide"/>
+                            <field name="apix_credits" optional="hide"/>
+                            <field name="cancelled_by_id" optional="hide"/>
+                            <field name="origin" optional="hide"/>
+                            <button name="action_cancel" type="object" string="Cancel"
+                                    class="btn-link" invisible="state != 'queued'"/>
+                            <field name="needs_attention" column_invisible="1"/>
+                            <field name="handled_reason" optional="hide"/>
+                            <button name="action_open_technical" type="object"
+                                    string="Technical" class="btn-link"
+                                    groups="base.group_no_one"/>
+                            <button name="action_open_mark_handled" type="object"
+                                    string="Mark handled" class="btn-link"
+                                    invisible="not needs_attention"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- SCR-05: optional columns on the customer invoice list. -->
+    <record id="account_move_view_invoice_tree_send_apix" model="ir.ui.view">
+        <field name="name">account.move.invoice.list.send.apix</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='amount_total_in_currency_signed']" position="after">
+                <field name="transmit_method" optional="show"/>
+                <field name="send_state" optional="show" widget="badge"
+                       decoration-success="send_state == 'sent'"
+                       decoration-info="send_state == 'ready'"
+                       decoration-warning="send_state in ('not_ready', 'in_progress')"
+                       decoration-danger="send_state in ('refused', 'failed')"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- SCR-05: the sending filters. -->
+    <record id="account_move_view_invoice_filter_send_apix" model="ir.ui.view">
+        <field name="name">account.invoice.select.send.apix</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_account_invoice_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='posted']" position="after">
+                <separator/>
+                <filter name="apix_ready" string="Ready to send"
+                        domain="[('send_state', '=', 'ready')]"/>
+                <filter name="apix_not_ready" string="Not ready"
+                        domain="[('send_state', '=', 'not_ready')]"/>
+                <filter name="apix_failed" string="Failed sends"
+                        domain="[('send_state', 'in', ('refused', 'failed'))]"/>
+                <filter name="apix_not_sent" string="Not sent yet"
+                        domain="[('already_sent', '=', False), ('state', '=', 'posted')]"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

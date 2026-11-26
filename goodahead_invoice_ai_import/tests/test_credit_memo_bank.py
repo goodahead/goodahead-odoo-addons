@@ -1,30 +1,37 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""A received credit note must not put the vendor's bank account on the company.
+"""Credit-note bank handling — a received credit note must not put the vendor's account on us.
 
-Core reads the bank details of an ``in_refund`` as the company's own, which is true
-only of credit notes the company issues. These tests run the real decoder and check
-which partner holds the account and which account the document states.
+Core reads the bank details of an ``in_refund`` as the company's own, because
+on a credit note we are the payee. True of one we issue; false of every one we
+receive, where the account printed is the supplier's. These tests run the real
+decoder over a real generated CreditNote and assert which partner ends up
+holding the account, and which account the document states.
+
+The document is invented: a credit note whose IBAN the model misreads; the
+vendor identifiers are faked (``ZZ-…``) so the DB-touching match cannot collide
+with a real vendor already in the database.
 """
 
 from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.models.account_move import (
+from odoo.addons.goodahead_invoice_import.models.account_move import (
     iban_checksum_fails,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
 )
 
 from .profiles import skip_method_unless_profile
 
-VENDOR_IBAN = "FI1640001000000017"
-# A misread with one digit too many, failing the IBAN checksum.
-MISREAD_IBAN = "FI16400010000000017"
-# Any valid Finnish IBAN that is not the vendor's.
+VENDOR_IBAN = "FI2912345600004521"
+# How Claude keeps reading it: one digit too many, failing the IBAN checksum.
+MISREAD_IBAN = "FI29123456000004521"
+# Any valid Finnish IBAN that is not the vendor's; the company's own number is
+# avoided so the test cannot collide with a row already in the database.
 COMPANY_IBAN = "FI2112345600000785"
 
 
@@ -57,8 +64,8 @@ class TestCreditMemoBank(TransactionCase):
         return {
             "type": doc_type,
             "invoice_number": "ZZ-CN-1",
-            "issue_date": "2026-09-09",
-            "due_date": "2026-09-09",
+            "issue_date": "2026-03-02",
+            "due_date": "2026-03-02",
             "currency": "EUR",
             "seller": {
                 "name": "ZZ Bank Vendor Oy",
@@ -70,36 +77,36 @@ class TestCreditMemoBank(TransactionCase):
             },
             "buyer": {
                 "name": self.company.name,
-                "vat": self.company.vat or "FI20000002",
+                "vat": self.company.vat or "FI00000123",
                 "country_code": "FI",
             },
-            "payment_reference": "12345672",
+            "payment_reference": "10203040501",
             "lines": [
                 {
-                    "product_code": "1000002",
-                    "name": "PISTORASIA",
+                    "product_code": "7700123",
+                    "name": "ZZ WALL SOCKET",
                     "quantity": sign * 4.0,
                     "unit_code": "C62",
-                    "price_unit": 18.61,
-                    "line_total": sign * 70.72,
+                    "price_unit": 22.5,
+                    "line_total": sign * 81.0,
                     "tax_percent": 25.5,
-                    "tax_amount": sign * 18.03,
+                    "tax_amount": sign * 20.66,
                     "tax_category": "S",
                 }
             ],
             "tax_subtotals": [
                 {
                     "tax_percent": 25.5,
-                    "taxable_amount": sign * 70.72,
-                    "tax_amount": sign * 18.03,
+                    "taxable_amount": sign * 81.0,
+                    "tax_amount": sign * 20.66,
                     "tax_category": "S",
                 }
             ],
             "totals": {
-                "line_extension": sign * 70.72,
-                "tax_exclusive": sign * 70.72,
-                "tax_inclusive": sign * 88.75,
-                "payable": sign * 88.75,
+                "line_extension": sign * 81.0,
+                "tax_exclusive": sign * 81.0,
+                "tax_inclusive": sign * 101.66,
+                "payable": sign * 101.66,
             },
         }
 
@@ -111,7 +118,7 @@ class TestCreditMemoBank(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "credit-memo.pdf",
                 "company_id": self.company.id,
@@ -122,7 +129,8 @@ class TestCreditMemoBank(TransactionCase):
             "extracted": extracted,
             "usage": {"input_tokens": 10, "output_tokens": 20},
             "model_name": "test-model",
-            # The real entry point, so the IBAN checksum runs as in production.
+            # The model's entry point, as the import calls it, so the IBAN
+            # checksum runs exactly as it does on a real extraction.
             "xml_bytes": self.env["account.move"]._ai_generate_ubl_from_extracted(
                 extracted, self.company
             ),
@@ -137,7 +145,8 @@ class TestCreditMemoBank(TransactionCase):
         return record.move_id
 
     def _deactivate_company_banks(self):
-        """Archive the company partner's existing accounts."""
+        """Take whatever the database already hangs off the company partner out
+        of the running, so a test controls which account can be selected."""
         self.company.partner_id.bank_ids.filtered("active").write({"active": False})
 
     def _company_banks(self):
@@ -172,9 +181,13 @@ class TestCreditMemoBank(TransactionCase):
         )
 
     def test_credit_note_ignores_a_vendor_iban_already_on_the_company(self):
-        """A vendor IBAN already left on the company partner is not stated on the bill.
+        """The reported case: an earlier import left the vendor's IBAN on the
+        company partner, where it answers to the right owner and the compute
+        picks it up regardless.
 
-        Other company accounts are archived so the polluted one is the only candidate.
+        Every other company account is deactivated first, so the polluted one is
+        the only candidate — otherwise another account could be selected and the
+        assertion would pass without ever exercising the collision.
         """
         self._deactivate_company_banks()
         polluting = self.Bank.create(
@@ -215,7 +228,8 @@ class TestCreditMemoBank(TransactionCase):
         )
 
     def test_bill_still_states_the_vendor_account(self):
-        """On an ordinary bill the vendor's account is stated."""
+        """The guard must not disturb an ordinary bill, where the account we pay
+        into is precisely the vendor's."""
         move = self._import(self._extracted(doc_type="Invoice"))
 
         self.assertEqual(move.move_type, "in_invoice")
@@ -227,10 +241,19 @@ class TestCreditMemoBank(TransactionCase):
         self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
 
     def test_bill_keeps_the_vendor_account_despite_a_stray_copy_on_the_company(self):
-        """A stray copy of the vendor IBAN on the company does not strip it off a bill.
+        """🔴 The guard must not strip a CORRECT account off an ordinary bill.
 
-        The number check applies only when the company is the payee; on a bill
-        ownership alone decides.
+        The residue this module exists to clean up is a vendor IBAN sitting on
+        the company partner. On a bill we pay, `_ai_enforce_document_bank_side`
+        used to treat that stray copy as evidence against the vendor's OWN row:
+        the legitimate account failed the "not also the other party's" test, no
+        replacement survived the same test, `partner_bank_id` was cleared, and
+        the chatter said the account "was not the account of the party being
+        paid" — which was not what had happened.
+
+        The number test now applies only when WE are the payee. On a bill the
+        vendor is the payee, the number on the document is theirs by definition,
+        and ownership alone decides.
         """
         self.Bank.create(
             {"acc_number": VENDOR_IBAN, "partner_id": self.company.partner_id.id}
@@ -251,7 +274,11 @@ class TestCreditMemoBank(TransactionCase):
         self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
 
     # ------------------------------------------------------------------
-    # The search-plan decoder's hook, called directly
+    # 🔴 The NEW decoder's hook — the one that fires on THIS tree
+    #
+    # Called directly, as the older hook's tests below are, so the two sit side
+    # by side and it is obvious which covers which core. The tests above reach
+    # this same hook through the real decoder; these pin its contract.
     # ------------------------------------------------------------------
 
     def _collected(self, move_type="in_refund", account_numbers=(VENDOR_IBAN,)):
@@ -265,11 +292,17 @@ class TestCreditMemoBank(TransactionCase):
             "to_write": {},
         }
 
-    # `_import_ubl_retrieve_partner_bank` does not exist on the legacy build, so
-    # these are gated per method; the `test_older_hook_*` tests run on both.
+    # 🔴 The four `test_new_hook_*` below call
+    # `account.edi.ubl._import_ubl_retrieve_partner_bank` DIRECTLY, and that
+    # method is core's on the search-plan build and does not exist at all on the
+    # legacy one — `super()` there raises `AttributeError`, as does
+    # `res.partner.bank._find_or_create_bank_account`. There is no portable
+    # spelling: the hook under test is the build. They are gated per METHOD, not
+    # per class, because the `test_older_hook_*` pair in this same class is the
+    # LIVE path on the legacy build and must keep running there.
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_new_hook_records_the_iban_on_the_vendor(self):
-        """The supplier's account goes on the supplier."""
+        """The live path here: the supplier's account goes on the supplier."""
         collected = self._collected()
 
         self.env["account.edi.xml.ubl_bis3"]._import_ubl_retrieve_partner_bank(collected)
@@ -290,7 +323,8 @@ class TestCreditMemoBank(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_new_hook_states_no_account_on_a_received_credit_note(self):
-        """``partner_bank_id`` is left to the compute, which picks the company's account."""
+        """``partner_bank_id`` is left to ``_compute_partner_bank_id``, which on
+        an ``in_refund`` picks OUR account — the one the money comes back to."""
         collected = self._collected()
 
         self.env["account.edi.xml.ubl_bis3"]._import_ubl_retrieve_partner_bank(collected)
@@ -303,7 +337,8 @@ class TestCreditMemoBank(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_new_hook_leaves_an_ordinary_bill_to_core(self):
-        """Only ``in_refund`` is diverted; bills keep core's behaviour."""
+        """Only ``in_refund`` is diverted. On a bill we pay, core's behaviour —
+        the vendor's account, stated on the document — is exactly right."""
         collected = self._collected(move_type="in_invoice")
 
         self.env["account.edi.xml.ubl_bis3"]._import_ubl_retrieve_partner_bank(collected)
@@ -315,10 +350,16 @@ class TestCreditMemoBank(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_new_hook_reads_the_partner_from_customer_values(self):
-        """The hook reads the partner from ``customer_values['customer']``.
+        """🔴 Guards the key spelling.
 
-        That is where the partner-resolving step writes it, unlike the key core's
-        own hook reads. Here it is the only place the partner appears.
+        Core's own version of this hook reads ``collected_values['customer']``,
+        while the step that resolves the partner writes
+        ``customer_values['customer']``. Ours reads the latter — the one that is
+        actually populated on this build. If a future core moves the value and
+        this silently starts reading None, the account would stop being recorded
+        against the vendor. Here the ONLY place the partner appears is
+        ``customer_values``, and the move carries no partner, so the test fails
+        if the spelling is "corrected" to core's.
         """
         collected = self._collected()
         self.assertFalse(collected["invoice"].partner_id)
@@ -338,9 +379,11 @@ class TestCreditMemoBank(TransactionCase):
     # ------------------------------------------------------------------
     # The older decoder's hook
     #
-    # Older 19.0 builds resolve the bank through
-    # ``account.edi.common._import_partner_bank``. Newer cores still have it
-    # (Factur-X and UBL 2.0 reach it), so these run on either core.
+    # Core before 2026-04 — which an older 19.0 nightly runs, and which this
+    # tree does NOT — resolves the bank through
+    # ``account.edi.common._import_partner_bank`` and never reaches the hook
+    # the tests above go through. This core still has the method (Factur-X and
+    # UBL 2.0 reach it), so it is called directly: these hold on either core.
     # ------------------------------------------------------------------
 
     def _refund(self, move_type="in_refund"):
@@ -349,7 +392,7 @@ class TestCreditMemoBank(TransactionCase):
         )
 
     def test_older_hook_records_the_iban_on_the_vendor(self):
-        """The number goes on the vendor, not on the company."""
+        """The reported case: the number goes on the vendor, not on us."""
         refund = self._refund()
 
         self.env["account.edi.common"]._import_partner_bank(refund, [VENDOR_IBAN])
@@ -365,7 +408,8 @@ class TestCreditMemoBank(TransactionCase):
         self.assertNotEqual(refund.partner_bank_id, vendor_bank)
 
     def test_older_hook_leaves_an_archived_company_row_archived(self):
-        """The older core would un-archive a matching row on the company partner."""
+        """The older core un-archives a matching row on the company partner,
+        which is why archiving the stray accounts by hand never held."""
         archived = self.Bank.create(
             {"acc_number": VENDOR_IBAN, "partner_id": self.company.partner_id.id}
         )
@@ -378,7 +422,8 @@ class TestCreditMemoBank(TransactionCase):
         self.assertFalse(archived.active, "an archived stray row stays archived")
 
     def test_older_hook_ignores_a_sender_resolved_to_the_company(self):
-        """With the sender resolved to the company, the IBAN still stays off it."""
+        """Seller and buyer swapped: the document's sender is us. The IBAN must
+        still not land on the company partner."""
         refund = self.env["account.move"].create(
             {"move_type": "in_refund", "partner_id": self.company.partner_id.id}
         )
@@ -407,16 +452,17 @@ class TestCreditMemoBank(TransactionCase):
 
     def test_iban_checksum(self):
         self.assertFalse(iban_checksum_fails(VENDOR_IBAN))
-        self.assertFalse(iban_checksum_fails("FI16 4000 1000 0000 17"))
+        self.assertFalse(iban_checksum_fails("FI29 1234 5600 0045 21"))
         self.assertTrue(iban_checksum_fails(MISREAD_IBAN))
-        # Odd spacing of the correct number is still valid.
-        self.assertFalse(iban_checksum_fails("FI16400010000000 17"))
+        # Claude's odd spacing of the correct number: still valid.
+        self.assertFalse(iban_checksum_fails("FI29123456000045 21"))
         # Not shaped like an IBAN: a domestic number is not ours to judge.
-        self.assertFalse(iban_checksum_fails("987654320"))
+        self.assertFalse(iban_checksum_fails("630830900"))
         self.assertFalse(iban_checksum_fails(None))
 
     def test_misread_iban_never_becomes_a_bank_account(self):
-        """An IBAN failing its checksum is recorded on nobody and stated nowhere."""
+        """On a bill the account is recorded on the vendor and stated on the
+        document — the worst place for a number that does not exist."""
         extracted = self._extracted(doc_type="Invoice")
         extracted["seller"]["iban"] = MISREAD_IBAN
 

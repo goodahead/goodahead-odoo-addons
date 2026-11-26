@@ -1,17 +1,41 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The bill form for an imported bill whose vendor was not recognised.
+"""Three UI reports from testing the import on a small Finnish test database.
 
-1. The vendor card reports draft bills next to posted ones.
-2. The "vendor not recognised" explanation is shown even when there are no
-   candidates.
-3. A "Create contact from this invoice" button creates the vendor on request,
-   refuses parties that can never be vendors, and never creates duplicates.
+None of them is a crash; all three are the screen saying less than it knows,
+which is this module's recurring shape of defect.
 
-Automatic vendor creation stays off; the button is an explicit decision by a
-person. These tests check the arch and evaluate `invisible=` modifiers against
-records; they cannot check visual layout.
+  1. **bill D** — the bill said there were no posted bills from the vendor,
+     which was right, but said nothing of the vendor's drafts. The vendor had
+     **no posted and several draft** bills, and the sentence *"No posted bills
+     from this vendor yet"* was true in every word while the conclusion a
+     reader draws from it was wrong.
+  2. **bill B** — no box with a vendor suggestion, and no offer to create one.
+     The explanation lived INSIDE the candidate div, whose
+     `invisible="partner_id or not ai_vendor_candidate_ids"` hides it exactly
+     when the candidate list is empty. A small contact book with next to no
+     vendors in the sellers' country leaves the list legitimately empty every
+     time, and the form said nothing at all.
+  3. **bill C** — no one-button way to create the contact. It existed in no
+     form: the module's own `_create_partner_from_extraction` says
+     *"🔴 NEVER CREATE ONE"*.
+
+🔴 WHAT THE BUTTON IS NOT. Automatic creation was removed in 19.0.3.0.0 on a
+measurement — most sample bills minted a duplicate beside an active vendor —
+and the source project's older version created vendors silently, which is
+what is not wanted. A person pressing a button, having read the
+chatter note listing what was on the document and which existing vendors come
+closest, is a decision. The tests below pin both halves of that: it creates when
+asked, it refuses a party that can never be a vendor, and pressing it twice
+produces ONE contact.
+
+⚠️ WHAT THESE TESTS CANNOT SEE. `get_view` returns the same arch whether a line
+renders as one 31 px row or as two, so the two view changes here are asserted at
+the level of *"the arch contains this, with this condition"* and no further.
+**The browser look is outstanding and is flagged as such** — this file cannot
+discharge the project's rule that a visual change is only done after it has been
+looked at in a browser, light and dark.
 """
 
 import re
@@ -23,7 +47,7 @@ from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools.safe_eval import safe_eval
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 from odoo.addons.goodahead_invoice_ai_import.tests.posting import post_bill
@@ -112,7 +136,7 @@ class _UnmatchedHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-ui.pdf",
                 "company_id": self.company.id,
@@ -156,10 +180,30 @@ class _UnmatchedHarness(TransactionCase):
         )["arch"]
 
     # ------------------------------------------------------------------
-    # `get_view` returns one arch for all records, so "the arch contains X"
-    # cannot detect an `invisible=` modifier that is too permissive. The
-    # helper below evaluates the modifier against a record's values, as the
-    # web client does, so tests can check both the visible and hidden state.
+    # 🔴 THE LESSON THAT COST TWO DEFECTS IN ONE DAY, BOTH FOUND IN A BROWSER
+    # AFTER EVERY SERVER CHECK WAS GREEN.
+    #
+    # `get_view` returns ONE arch for every record in the table. So an
+    # assertion of the form *"the arch contains this string"* cannot see a
+    # modifier that is TOO PERMISSIVE: the element is present either way, and a
+    # missing term in its `invisible=` reads as a pass. That is exactly how the
+    # explanation block shipped visible on every hand-typed bill in the
+    # database — `invisible="partner_id"` where it needed
+    # `invisible="partner_id or not ai_from_import"`.
+    #
+    # The helpers below close that. `_element_invisible_for` pulls the real
+    # `invisible` expression out of the arch and EVALUATES it against one
+    # record's field values, which is what the web client does. So a test can
+    # drive BOTH states — the record that should see the element and the record
+    # that should not — and a too-permissive modifier fails instead of passing.
+    #
+    # ⚠️ WHAT IT STILL CANNOT SEE, stated rather than implied: pixels. Widths,
+    # baselines, wrapping, colour and dark mode are outside any server test,
+    # and this module's view comments are a list of things only a browser found
+    # (a `<field>` measured at 504 px for a one-character integer;
+    # `align-items-center` turning a count into a superscript). Where a view
+    # change is visual, the browser look is a separate, outstanding step and
+    # must be named as such.
     # ------------------------------------------------------------------
 
     def _element_invisible_for(self, css_class, record):
@@ -184,14 +228,17 @@ class _UnmatchedHarness(TransactionCase):
             return False
         if expression in ("1", "True", "true"):
             return True
-        # Only the field names the expression uses are read.
+        # The client evaluates the expression against the record's values. Only
+        # the names the expression actually uses are read, so this does not
+        # depend on knowing the whole form.
         names = {
             name
             for name in self.AM._fields
             if re.search(r"\b%s\b" % re.escape(name), expression)
         }
         values = {name: record[name] for name in names}
-        # A many2one evaluates as its id, as in the client.
+        # A many2one reads as its id, which is what the client sees and what
+        # makes `invisible="partner_id"` truthy for a filed bill.
         for name, value in list(values.items()):
             if hasattr(value, "_name"):
                 values[name] = value.id
@@ -200,13 +247,19 @@ class _UnmatchedHarness(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
-    """The vendor card reports draft bills, not only posted ones."""
+    """Report 1 — bill D."""
 
     def test_the_draft_count_is_reported_beside_the_posted_one(self):
-        """Other draft bills are counted separately from posted ones.
+        """🔴 RED. There was no draft number anywhere in the module.
 
-        Counts are only computed for imported bills (`ai_from_import`), so the
-        bill under test goes through `_run_import`.
+        ⚠️ THE BILL ON SCREEN HAS TO BE AN IMPORTED ONE, and the first version
+        of this test used a hand-made bill and read 0. That is not a bug: both
+        counts are computed only for a bill with an `ai.invoice.import` row
+        (`ai_from_import`), deliberately, because a bill typed by a person had
+        its vendor chosen by that person and the line would be noise on every
+        manual bill in the database. The field's own view note says so. So the
+        bill under test is produced by `_run_import`, and the other drafts are
+        hand-made because only the one on screen needs to be imported.
         """
         move = self._run_import()
         move.action_ai_create_vendor_from_extraction()
@@ -227,8 +280,14 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
         )
 
     def test_a_draft_bill_does_not_count_itself(self):
-        """The bill on screen, usually a draft, is not counted in its own
-        draft count."""
+        """🔴 THE TRAP THE POSTED COUNT NEVER HAD.
+
+        The old comment in `_compute_ai_vendor_bill_count` said a draft "is not
+        in `total` to begin with", which was true while only posted rows were
+        counted and false the moment drafts are. The bill on screen is almost
+        always a draft, so without a per-state subtraction bill D would report
+        "1 draft bill from this vendor" meaning itself.
+        """
         move = self._run_import()
         move.action_ai_create_vendor_from_extraction()
         move.invalidate_recordset(["ai_vendor_draft_bill_count"])
@@ -236,7 +295,9 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
         self.assertEqual(move.ai_vendor_draft_bill_count, 0)
 
     def test_control_a_vendor_with_no_bills_at_all_still_reads_zero_and_zero(self):
-        """A new vendor reports zero posted and zero draft bills."""
+        """The control: the test above is not passing because every vendor has
+        drafts. A brand-new vendor reports 0 posted and 0 draft, which is the
+        state the plain zero-posted sentence is for."""
         vendor = self.Partner.create(
             {"name": "ZZ Brand New Vendor", "is_company": True}
         )
@@ -248,7 +309,12 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
         self.assertEqual(self.AM._ai_draft_bill_counts(vendor), {vendor: 0})
 
     def test_control_a_posted_bill_is_still_counted_as_posted(self):
-        """The helpers tell posted and draft bills apart."""
+        """The posted number is unchanged by the refactor — the whole reason
+        `_ai_posted_bill_counts` was kept as a projection rather than replaced.
+
+        Asserted on the HELPER, which is where the states are told apart; the
+        move-level subtraction is the subject of the two tests above.
+        """
         vendor = self.Partner.create(
             {"name": "ZZ Posted Vendor", "is_company": True}
         )
@@ -263,8 +329,11 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
         self.assertEqual(self.AM._ai_draft_bill_counts(vendor), {vendor: 1})
 
     def test_one_helper_still_feeds_both_screens(self):
-        """Both projections read `_ai_bill_counts`, so stubbing it changes both
-        answers.
+        """🔴 THE COUNTING IS NOT FORKED. Both projections read
+        `_ai_bill_counts`, so the card and the form line cannot drift into
+        disagreeing about which rows they count. Stubbing the one body must
+        change BOTH answers — the same shape of check as
+        `test_vendor_matcher.TestOneBodyPerRule`.
         """
         vendor = self.Partner.create(
             {"name": "ZZ One Body Vendor", "is_company": True}
@@ -289,7 +358,12 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
         self.assertIn("other drafts", arch)
 
     def test_the_bill_history_block_is_hidden_on_a_bill_nobody_imported(self):
-        """The bill-history block is hidden on a hand-typed bill."""
+        """The same too-permissive-modifier check on screen 1b.
+
+        It has always carried `not ai_from_import`, so this is a lock rather
+        than a repair — written because the block next door shipped without it
+        and nothing noticed.
+        """
         vendor = self.Partner.create({"name": "ZZ Manual", "is_company": True})
         manual = self.AM.create(
             {
@@ -317,11 +391,11 @@ class TestTheCardNamesTheDraftCount(_UnmatchedHarness):
 
 @tagged("post_install", "-at_install")
 class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
-    """The unmatched-vendor explanation does not depend on candidates."""
+    """Report 2 — bill B."""
 
     def test_the_explanation_is_not_inside_the_candidate_block(self):
-        """The zero-candidate explanation is its own block, outside the
-        candidate list.
+        """🔴 RED. The sentence was inside a div hidden by
+        `not ai_vendor_candidate_ids`, i.e. hidden in the one case it exists for.
         """
         arch = self._arch()
 
@@ -333,8 +407,23 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
         )
 
     def test_the_explanation_is_hidden_on_a_bill_nobody_imported(self):
-        """A new, hand-made bill does not show the explanation or the
-        button."""
+        """🔴 THE DEFECT THIS WHOLE PAIR EXISTS FOR, AND IT SHIPPED.
+
+        Found in a browser, after every server test was green:
+        pressing **New** on the Bills list showed *"This vendor was not
+        recognised and nothing in the contact book came close… or create the
+        contact from what was read off the document"* on a blank form. There is
+        no document. The button was correctly hidden; the sentence was not,
+        because the block had inherited only the `partner_id` half of the
+        condition it used to live under.
+
+        🔴 AND THE TEST THAT WAS HERE COULD NOT HAVE CAUGHT IT. It asserted
+        that the arch CONTAINS the block, and the arch contains it either way —
+        `get_view` returns one arch for every record. Only evaluating the
+        modifier against a record that should not see the element shows a
+        modifier that is too permissive. See the note on
+        `_element_invisible_for`.
+        """
         manual = self.AM.create(
             {"move_type": "in_invoice", "journal_id": self.journal.id}
         )
@@ -353,7 +442,8 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
         )
 
     def test_control_the_explanation_is_shown_on_an_imported_bill(self):
-        """An imported bill with no vendor shows the explanation."""
+        """The control, and without it the test above passes by hiding the block
+        from everybody — which is the defect's mirror image and just as wrong."""
         move = self._run_import()
 
         self.assertFalse(move.partner_id, "fixture check: nothing matched")
@@ -376,15 +466,15 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
         )
 
     def test_a_bill_with_no_candidates_still_has_something_to_say(self):
-        """An import with no match and no candidates still gets the
-        explanation and the button."""
+        """The end-to-end half: an import that matches nothing and finds no
+        candidates still produces a bill the explanation applies to."""
         move = self._run_import()
 
         self.assertFalse(move.partner_id)
         self.assertFalse(
             move.ai_vendor_candidate_ids,
             "fixture check: nothing in this contact book resembles the seller, "
-            "so this is the zero-candidate case",
+            "so this is the zero-candidate case that was reported",
         )
         self.assertTrue(
             move.ai_from_import and move.ai_can_create_vendor,
@@ -392,8 +482,11 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
         )
 
     def test_control_the_candidate_list_still_renders_when_there_are_candidates(self):
-        """The candidate list is hidden without candidates and shown with
-        them, alongside the explanation.
+        """The control. Moving the sentence out must not take the list with it.
+
+        Both states of the candidate block's OWN modifier, for the same reason
+        as the test above: asserting it is present in the arch would pass
+        whatever its condition said.
         """
         move = self._run_import()
         self.assertTrue(
@@ -429,7 +522,9 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
         self.assertIn("action_use_this", self._arch())
 
     def test_control_the_explanation_is_gone_once_a_vendor_is_filed(self):
-        """Once a vendor is set, the create button is no longer offered."""
+        """Both wordings sit under `invisible="partner_id"`, so a filed bill
+        shows neither — otherwise the fix would have traded one wrong screen
+        for another."""
         move = self._run_import()
         vendor = self.Partner.create({"name": "ZZ Picked", "is_company": True})
 
@@ -443,11 +538,10 @@ class TestTheExplanationRendersWithoutCandidates(_UnmatchedHarness):
 
 @tagged("post_install", "-at_install")
 class TestTheCreateContactButton(_UnmatchedHarness):
-    """The "Create contact from this invoice" button."""
+    """Report 3 — bill C."""
 
     def test_it_creates_one_contact_and_files_the_bill_against_it(self):
-        """One contact is created from the extraction and set on the bill,
-        without a bank account."""
+        """🔴 RED. No such action existed."""
         move = self._run_import()
         before = self.Partner.with_context(active_test=False).search_count([])
 
@@ -468,11 +562,11 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         self.assertTrue(vendor.is_company)
         self.assertFalse(
             vendor.bank_ids,
-            "a bank account is NEVER written automatically",
+            "F27's rule: a bank account is NEVER written automatically",
         )
 
     def test_it_learns_the_identifiers_so_the_next_bill_matches_itself(self):
-        """The new contact gets phone and domain identifiers."""
+        """The reason to create the contact rather than leave the bill empty."""
         move = self._run_import()
 
         move.action_ai_create_vendor_from_extraction()
@@ -482,15 +576,28 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         self.assertIn("domain", kinds)
 
     def test_a_second_bill_from_the_same_vendor_creates_nobody(self):
-        """A second bill from the same vendor matches the created contact at
-        import, via its identifiers, so the button is not even offered.
+        """🔴 THE DUPLICATE RULE, AND THIS MODULE'S HISTORY IS WHY.
+
+        ⚠️ AND THE SECOND BILL NEVER REACHES THE BUTTON, WHICH IS A BETTER
+        ANSWER THAN THE ONE THIS TEST WAS WRITTEN TO ASSERT. The first version
+        pressed the button on the second bill and failed with *"This bill
+        already has a vendor"* — because the contact the first press created
+        carries the phone and domain identifier rows `_ai_apply_vendor_data`
+        added, so the IMPORT matched it by itself. The duplicate is prevented
+        one step earlier than the button, by the matcher. That is the outcome
+        the rule is about, so it is what is asserted.
+
+        ⚠️ the core/source split: the second bill carries its OWN invoice
+        number. The same number from the same vendor is now stopped as a
+        duplicate invoice before any bill exists, so re-importing the first
+        document would no longer reach the matcher this test is about.
         """
         move = self._run_import()
         move.action_ai_create_vendor_from_extraction()
         vendor = move.partner_id
         count = self.Partner.with_context(active_test=False).search_count([])
 
-        second = self._run_import()
+        second = self._run_import(dict(self._extracted(), invoice_number="ZZ-UI-2"))
 
         self.assertEqual(
             self.Partner.with_context(active_test=False).search_count([]),
@@ -508,8 +615,12 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         )
 
     def test_the_button_links_an_existing_contact_instead_of_creating_a_second(self):
-        """If a matching contact appeared after import, the button links it
-        instead of creating another (`_ai_find_vendor` runs first).
+        """The button's OWN dedupe branch, exercised directly.
+
+        The gap it closes: the bill is imported with no match, somebody creates
+        the contact by hand (or another bill's press creates it) and only THEN
+        the button is pressed. `_ai_find_vendor` runs first, every time, so the
+        press links rather than mints.
         """
         move = self._run_import()
         self.assertFalse(move.partner_id, "fixture check: nothing matched at import")
@@ -547,8 +658,12 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         self.assertIn("created this contact from bill", bodies)
 
     def test_it_refuses_a_seller_that_resolves_to_our_own_company(self):
-        """A seller resolving to the company's own partner is refused and
-        nothing is created.
+        """🔴 THE GUARD, FROM THE OTHER SIDE.
+
+        A one-click create that wrote our own company — or minted a second copy
+        of it — would reintroduce exactly the defect this branch fixes. The
+        seller block here prints the company's own name, so the only thing it
+        resolves to is a party that can never be a vendor.
         """
         self.env.company.partner_id.name = "ZZ Our Own Company Oy"
         move = self._run_import(name="ZZ Our Own Company Oy")
@@ -584,7 +699,7 @@ class TestTheCreateContactButton(_UnmatchedHarness):
         self.assertIn("user account", str(caught.exception))
 
     def test_it_refuses_a_bill_that_already_has_a_vendor(self):
-        """The server-side check holds even when the button is hidden (RPC)."""
+        """A button's visibility rule is UI only; an RPC is not the UI."""
         move = self._run_import()
         move.partner_id = self.Partner.create(
             {"name": "ZZ Already Filed", "is_company": True}
@@ -595,7 +710,7 @@ class TestTheCreateContactButton(_UnmatchedHarness):
 
     def test_it_refuses_a_bill_with_no_readable_seller_name(self):
         move = self._run_import()
-        self.env["ai.invoice.import"].search(
+        self.env["goodahead.invoice.import"].search(
             [("move_id", "=", move.id)]
         ).extraction_data = '{"seller": {}}'
         self.env["ir.attachment"].search(
@@ -613,7 +728,8 @@ class TestTheCreateContactButton(_UnmatchedHarness):
             move.action_ai_create_vendor_from_extraction()
 
     def test_control_the_offer_is_made_on_the_bill_that_needs_it(self):
-        """Control: `ai_can_create_vendor` is True on an unmatched import."""
+        """The control for the refusals above: `ai_can_create_vendor` is not
+        simply always False."""
         move = self._run_import()
 
         self.assertTrue(move.ai_can_create_vendor)

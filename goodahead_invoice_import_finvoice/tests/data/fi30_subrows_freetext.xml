@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: a leading text row, text rows after priced rows, and a
+     subtotal row (SubInvoiceRow) summarising the rows above it. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000002-7</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Hardware Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000027</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>H-778</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261110</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">25,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">6,38</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">31,38</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">25,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">6,38</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <RowFreeText>Tilauksenne 4500012345</RowFreeText>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>RU-M6</ArticleIdentifier>
+    <ArticleName>Ruuvi</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">100</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">0,10</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">2,55</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">10,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">12,55</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <RowFreeText>Sinkitty, M6</RowFreeText>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleIdentifier>MU-M6</ArticleIdentifier>
+    <ArticleName>Mutteri</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">100</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">0,05</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">1,28</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">5,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">6,28</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <SubInvoiceRow>
+      <SubArticleName>Välisumma tarvikkeet</SubArticleName>
+      <SubRowVatExcludedAmount AmountCurrencyIdentifier="EUR">15,00</SubRowVatExcludedAmount>
+      <SubRowAmount AmountCurrencyIdentifier="EUR">18,83</SubRowAmount>
+    </SubInvoiceRow>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Rahti</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">1</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">10,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">2,55</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">10,00</RowVatExcludedAmount>
+    <RowAmount AmountCurrencyIdentifier="EUR">12,55</RowAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <RowFreeText>Toimitus viikolla 48</RowFreeText>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261110</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Hardware Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI7512345600000007</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">40001111</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">31,38</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261124</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

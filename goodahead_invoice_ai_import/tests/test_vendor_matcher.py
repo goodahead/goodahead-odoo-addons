@@ -1,15 +1,38 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The vendor matcher on `res.partner`, reachable without any core import pipeline.
+"""The ONE vendor matcher, hoisted onto `res.partner` and reachable without any
+core import pipeline at all (the dual-core design).
 
-1. `res.partner._ai_find_vendor` works with every EDI entry point replaced by a
-   raiser, so it also runs on the legacy core.
-2. Each matching rule has one implementation: stubbing the shared helper changes
-   the answer of both the search-plan step and `_ai_find_vendor`.
-3. `account.move._ai_match_existing_vendor` delegates to `_ai_find_vendor`.
+🔴 WHAT THIS FILE IS FOR, AND IT IS NOT "does matching work". That is already
+covered by `test_partner_matching.py` and `test_vendor_identifiers.py`, which
+are left alone on purpose — they are the bit-identical-behaviour control for
+this change, and a change that needed them edited would not be a hoist.
 
-Fake `ZZ…` names and numbers avoid matching existing partners.
+What is new here is three claims that nothing could make before:
+
+1. **`res.partner._ai_find_vendor` runs with no core seam involved.** Not "it
+   happens not to call one today" — the guard below replaces every EDI entry
+   point this module owns with a function that raises, and the match still
+   succeeds. On the older core (`legacy`) none of those entry points is ever
+   called by anything, so a matcher that could only be reached through them
+   would be dead code there. That is the silent no-op the dual-core design exists to prevent.
+2. **There is exactly ONE body per matching rule.** The three
+   `_import_retrieve_customer_from_ai_*` search-plan steps and `_ai_find_vendor`
+   now call the same helpers, and the tests prove it by STUBBING the helper and
+   watching both callers change their answer. Two spellings of one rule is the
+   real portability bug — a fix applied to one is invisible in the other — and
+   a test that only checks "both give the right answer today" would not see a
+   divergence appear tomorrow.
+3. **`account.move._ai_match_existing_vendor` is now a delegation.** It keeps
+   its name because a dozen tests and the F27 chatter path call it; it keeps
+   its answer because `_ai_find_vendor` IS its old body.
+
+🔴 EVERY TEST HERE CARRIES A CONTROL — something that would FAIL if the thing
+under test were stubbed out or made unconditional.
+
+Fake `ZZ…` names and numbers throughout, so a DB-touching assertion can never
+collide with a real vendor in a migrated test database.
 """
 
 from unittest.mock import patch
@@ -18,7 +41,8 @@ from odoo.tests import TransactionCase, tagged
 
 
 class _Boom(Exception):
-    """Raised by the EDI guard below; distinct from anything the ORM raises."""
+    """Raised by the EDI guard below. A distinct class so a test cannot pass by
+    catching something the ORM raises for an unrelated reason."""
 
 
 def _explode(*args, **kwargs):
@@ -37,13 +61,13 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         cls.us = cls.env.ref("base.us")
         cls.fi = cls.env.ref("base.fi")
 
-        cls.liberty = cls.Partner.create(
+        cls.wideworld = cls.Partner.create(
             {
-                "name": "ZZ Liberty Import",
+                "name": "ZZ Wide World Import",
                 "is_company": True,
                 "supplier_rank": 9,
                 "phone": "+1 212-555-0112",
-                "email": "info@zzlibertyimport.com",
+                "email": "info@zzwideworldimport.test",
                 "country_id": cls.us.id,
             }
         )
@@ -71,8 +95,10 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_the_matcher_lives_on_res_partner_and_in_this_module(self):
-        """The matcher is defined by this module on `res.partner`, the model both
-        pipelines use during partner retrieval."""
+        """🔴 The whole point of the hoist. `account.move` is not a model the
+        legacy pipeline hands to anybody during partner retrieval; `res.partner`
+        is both adapters' own model. A matcher on the wrong model is reachable
+        from one pipeline only."""
         klass = next(
             k
             for k in type(self.Partner).__mro__
@@ -80,7 +106,7 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
         self.assertTrue(
             (klass.__module__ or "").startswith(
-                "odoo.addons.goodahead_invoice_ai_import"
+                "odoo.addons.goodahead_invoice_import"
             ),
             "_ai_find_vendor must be defined by this module, not inherited from "
             "something that happens to carry the name: %s" % klass.__module__,
@@ -97,7 +123,8 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
 
     def test_it_matches_on_a_business_id_scoped_to_its_country(self):
-        """Separators are ignored: `ZZ FI 0042` and `ZZFI0042` are the same number."""
+        """The printed separators are formatting, not identity — `ZZ FI 0042`
+        and `ZZFI0042` are the same registration number."""
         self.assertEqual(
             self.Partner._ai_find_vendor(
                 {"name": "ZZ Anything", "business_id": "ZZ FI 0042", "country_code": "FI"}
@@ -106,7 +133,9 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
 
     def test_a_business_id_without_a_country_matches_nothing(self):
-        """A registration number is only unique within its country."""
+        """🔴 THE CONTROL. A national registration number is unique inside its
+        country and nowhere else, so without one this is a free-text match on a
+        short string across every partner in the database."""
         self.assertFalse(
             self.Partner._ai_find_vendor(
                 {"name": "ZZ Anything", "business_id": "ZZ FI 0042"}
@@ -115,7 +144,10 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
 
     def test_it_matches_on_a_normalised_phone(self):
         self.assertEqual(
-            # A national-form number needs its country to be normalised.
+            # `country_code` since 19.0.3.11.0: a national-form number means
+            # nothing without one, and the legacy bench's installation is
+            # Finnish — without it this assertion would mean two different
+            # things on the two benches while reading identically.
             self.Partner._ai_find_vendor(
                 {
                     "name": "ZZ Anything",
@@ -123,22 +155,38 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
                     "country_code": "US",
                 }
             ),
-            self.liberty,
+            self.wideworld,
         )
 
     def test_it_matches_on_an_email_domain(self):
         self.assertEqual(
             self.Partner._ai_find_vendor(
-                {"name": "ZZ Anything", "email": "purchasing@zzlibertyimport.com"}
+                {"name": "ZZ Anything", "email": "purchasing@zzwideworldimport.test"}
             ),
-            self.liberty,
+            self.wideworld,
         )
 
     def test_the_three_added_keys_are_tried_in_order_registry_phone_domain(self):
-        """The module's own keys are tried in the order registry, phone, domain.
+        """🔴 THE ONE REAL COVERAGE HOLE A TEST AUDIT FOUND, AND IT
+        IS LIVE ON BOTH PROFILES.
 
-        Each key points at a different partner, so the answer names the rule that
-        won. Removing the registry falls to the phone partner, then to the domain one.
+        The precedence AMONG this module's own three keys —
+        registry → phone → domain, `res_partner.py:292-315` — is the shared body
+        both adapters run. It was asserted in exactly one place: a
+        `search_plan`-GATED test that reads the search *plan's* ordered list,
+        which is a different object. So on the legacy bench nothing checked it
+        at all, and on either bench swapping the phone block above the registry
+        block would have left every test green while a seller carrying a correct
+        `business_id` for A and a phone resolving to B filed the bill against B.
+
+        Each key here points at a DIFFERENT partner, so the answer names the
+        rule that won. Ungated, through `_ai_vendor_from_seller_keys` itself —
+        the body, not one caller's spelling of it.
+
+        CONTROL: the same seller with the registry key removed must fall to the
+        PHONE partner, and with the phone removed too must fall to the DOMAIN
+        one. A method that always returned its first argument's registry match
+        would fail both.
         """
         by_phone = self.Partner.create(
             {
@@ -168,7 +216,7 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         self.assertEqual(
             self.Partner._ai_vendor_from_seller_keys(seller),
             self.oy,
-            "a national registration number is an EXACT key and outranks a "
+            "🔴 a national registration number is an EXACT key and outranks a "
             "telephone; nothing but this asserts it on either bench",
         )
 
@@ -188,11 +236,13 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
 
     def test_it_matches_on_the_printed_name_last(self):
         self.assertEqual(
-            self.Partner._ai_find_vendor({"name": "zz liberty import"}), self.liberty
+            self.Partner._ai_find_vendor({"name": "zz wide world import"}), self.wideworld
         )
 
     def test_a_document_that_identifies_nobody_matches_nobody(self):
-        """Control: a seller that identifies no partner matches nothing."""
+        """🔴 THE CONTROL for every test above: a matcher that returned "the
+        first supplier it could find" would pass all six and file every bill
+        against the same vendor."""
         self.assertFalse(
             self.Partner._ai_find_vendor(
                 {
@@ -204,12 +254,13 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         )
 
     def test_an_empty_seller_is_not_an_error(self):
-        """On a non-AI document the legacy adapter passes an empty seller."""
+        """The legacy adapter (step 3) calls this with whatever the context
+        carries, which on a non-AI document is nothing at all."""
         self.assertFalse(self.Partner._ai_find_vendor({}))
         self.assertFalse(self.Partner._ai_find_vendor(None))
 
     # ------------------------------------------------------------------
-    # No core seam is involved
+    # 🔴 The claim that needed a new test: no core seam is involved
     # ------------------------------------------------------------------
 
     def _edi_guard(self):
@@ -228,13 +279,18 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
         ]
 
     def test_the_matcher_runs_with_every_edi_entry_point_booby_trapped(self):
-        """The matcher works with every EDI entry point raising, as on the legacy
-        core where none of them is reached during a vendor-bill import."""
+        """🔴 THE TEST STEP 2 EXISTS FOR. On the legacy core none of these five
+        is ever reached during a vendor-bill import, so logic that could only be
+        got at through them is dead code there — installed, green, never run."""
         guards = self._edi_guard()
         for guard in guards:
             guard.start()
             self.addCleanup(guard.stop)
         self.assertEqual(
+            # `country_code` since 19.0.3.11.0: a national-form number means
+            # nothing without one, and the legacy bench's installation is
+            # Finnish — without it this assertion would mean two different
+            # things on the two benches while reading identically.
             self.Partner._ai_find_vendor(
                 {
                     "name": "ZZ Anything",
@@ -242,11 +298,14 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
                     "country_code": "US",
                 }
             ),
-            self.liberty,
+            self.wideworld,
         )
 
     def test_the_booby_trap_really_goes_off(self):
-        """Control: the guard really raises."""
+        """🔴 THE CONTROL FOR THE TEST ABOVE, and without it that test proves
+        nothing: a guard that patched the wrong class would let anything pass.
+        This project's own rule from gate check 1b — a zero is only trustworthy
+        when a fixture proves the tool can still fail."""
         guards = self._edi_guard()
         for guard in guards:
             guard.start()
@@ -257,10 +316,13 @@ class TestAiFindVendorIsCoreFree(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestOneBodyPerRule(TransactionCase):
-    """Each matching rule has one implementation; the search-plan steps wrap it.
+    """🔴 There must be exactly one implementation of each matching rule, and
+    the search-plan steps must be wrappers over it.
 
-    Each test stubs the shared helper and asserts that both the plan step and
-    `_ai_find_vendor` change their answer.
+    Each test stubs the shared helper and asserts that BOTH callers — the plan
+    step and `_ai_find_vendor` — change their answer. A reintroduced second
+    spelling makes exactly one of the two stop moving, which is the divergence
+    that no "both are right today" test can see.
     """
 
     @classmethod
@@ -286,7 +348,9 @@ class TestOneBodyPerRule(TransactionCase):
     def test_the_phone_rule_has_one_body(self):
         decoy = self.decoy
 
-        # Both callers pass `country_code`; the stub accepts it.
+        # `country_code` arrived with 19.0.3.11.0 and BOTH callers pass it, which
+        # is the point of the test: a stub that did not accept it would fail
+        # with a TypeError from whichever caller still had the old signature.
         def _stub(self, raw_phone, country_code=None):
             return decoy if raw_phone else self.browse()
 
@@ -355,7 +419,9 @@ class TestOneBodyPerRule(TransactionCase):
             )
 
     def test_the_move_level_matcher_is_a_delegation(self):
-        """`account.move._ai_match_existing_vendor` delegates to `_ai_find_vendor`."""
+        """`account.move._ai_match_existing_vendor` keeps its name — a dozen
+        tests and the F27 chatter path call it — and must now be nothing but a
+        call into `res.partner._ai_find_vendor`."""
         decoy = self.decoy
 
         def _stub(self, seller, company=None):
@@ -369,9 +435,12 @@ class TestOneBodyPerRule(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestSellerContextRelay(TransactionCase):
-    """The extracted seller dict rides on the context for adapters on either pipeline.
+    """The whole extracted seller dict rides on the context, so an adapter on
+    EITHER pipeline can rebuild it without reading core's decoded values.
 
-    The single-key relays read by the search-plan steps are kept alongside it.
+    The three single-key relays (`ai_seller_business_id`, `ai_seller_country_code`,
+    `ai_seller_website`) stay exactly as they are — the search-plan steps read
+    them and this change may not touch what they do.
     """
 
     @classmethod
@@ -387,7 +456,10 @@ class TestSellerContextRelay(TransactionCase):
         )
 
     def test_no_relay_means_an_empty_dict_not_a_crash(self):
-        """Outside this module's import nothing is on the context, so `{}` comes back."""
+        """🔴 THE CONTROL. `_retrieve_partner_with_name` (step 3's seam) is
+        reachable outside our own import, where nothing has put anything on the
+        context. Returning `{}` is what lets the adapter decline quietly instead
+        of raising on somebody else's document."""
         self.assertEqual(self.Partner._ai_seller_from_context(), {})
         self.assertEqual(
             self.Partner.with_context(ai_seller="not a dict")._ai_seller_from_context(),

@@ -1,14 +1,25 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The bill updates the vendor record: empty fields are filled automatically,
-conflicts are queued as suggestions for a person.
+"""F27 part 2 — the bill teaches the vendor record, and the safe half of that
+happens with nobody asked (19.0.3.0.0).
 
-Every "nothing was written" assertion is paired with a control showing that
-something else in the same extraction was written, so an apply that did
-nothing cannot pass. `setUp` makes any call to the Claude extractor fail.
-Fake `ZZ…` names, `555-01xx` numbers and `zz…` domains are used so nothing can
-collide with real vendors in a copied database.
+🔴 EVERY TEST HERE CARRIES A CONTROL. This project's recurring defect is a check
+that reads a proxy and fails in the direction that looks like success, so
+"nothing was written" is never asserted without "and this, in the same
+extraction, was" — otherwise an apply that did nothing at all would pass the
+whole safety half of this file.
+
+🔴 NOTHING HERE MAY REACH THE CLAUDE API. `setUp` replaces
+`ClaudeInvoiceExtractor.extract_invoice` with a function that raises, for every
+test in every class below. ⚠️ The older `lib.claude_client.requests` patch named
+in some notes no longer exists and must not be reintroduced: this module has
+owned no HTTP transport since 19.0.1.2.0 — `goodahead_claude` does.
+
+Fake `ZZ…` names, `555-01xx` numbers and `zz…` domains throughout. That is not
+fussiness: part 1's tests first ran with Wide World's REAL phone number and FAILED,
+because the real `Wide World Import` is in this database on that number and the
+uniqueness rule correctly declined to choose between two vendors.
 """
 
 import json
@@ -21,7 +32,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib import claude_client
 
 
 def _extraction(**seller_overrides):
-    """A minimal, arithmetically valid US extraction."""
+    """A minimal, arithmetically valid US extraction. Same shape as part 1's."""
     seller = {
         "name": "ZZ Unknown Trading Co",
         "vat": None,
@@ -38,7 +49,7 @@ def _extraction(**seller_overrides):
     seller.update(seller_overrides)
     return {
         "type": "Invoice",
-        "invoice_number": "ZZ-VS-2",
+        "invoice_number": "ZZ-F27-2",
         "issue_date": "2026-10-06",
         "currency": "USD",
         "seller": seller,
@@ -72,7 +83,7 @@ def _extraction(**seller_overrides):
     }
 
 
-class _SuggestionCase(TransactionCase):
+class _F27Case(TransactionCase):
     """The Claude guard, a purchase journal and the two models under test."""
 
     @classmethod
@@ -110,7 +121,12 @@ class _SuggestionCase(TransactionCase):
         )
 
     def _apply(self, partner, extracted, move=None):
-        """Run the apply against a bare bill, without the UBL decoder."""
+        """Run the apply against a bare bill, with no decoder in the way.
+
+        Deliberate: this is the unit the rules belong to. The full pipeline is
+        exercised by `TestTheNorthwindStory` below, where it is the pipeline that
+        is under test.
+        """
         move = move or self._bill()
         return move, move._ai_apply_vendor_data(partner, extracted)
 
@@ -138,20 +154,20 @@ class _SuggestionCase(TransactionCase):
 
 
 @tagged("post_install", "-at_install")
-class TestTheSafeHalf(_SuggestionCase):
-    """Empty vendor fields are filled automatically; conflicting ones are not
-    touched."""
+class TestTheSafeHalf(_F27Case):
+    """A field that is EMPTY on the vendor is filled from the invoice with
+    nobody asked. A field that CONTRADICTS it is not touched."""
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.vendor = cls.Partner.create(
-            {"name": "ZZ Sample Manufacturing", "is_company": True}
+            {"name": "ZZ Bluebird Manufacturing", "is_company": True}
         )
 
     def test_an_empty_street_is_filled_with_nobody_asked(self):
-        """Filling an empty field cannot lose anything, so it needs no
-        approval."""
+        """🔴 The rule: stop asking permission for the safe half. Filling an
+        EMPTY field cannot lose anything."""
         move, summary = self._apply(
             self.vendor, _extraction(street="1 ZZ Nowhere Road", city="Newark")
         )
@@ -166,8 +182,11 @@ class TestTheSafeHalf(_SuggestionCase):
         self.assertFalse(self._pending(move), "nothing here needed a decision")
 
     def test_a_street_that_differs_is_not_overwritten(self):
-        """A differing value is queued, never overwritten: the invoice is not
-        authoritative over what somebody typed."""
+        """🔴 THE CONTROL for the test above, and the whole risk of this
+        feature. An apply that simply wrote everything would pass that test and
+        would quietly replace what somebody typed. ⚠️ The invoice is NOT
+        authoritative — Tailspin prints a phone that is not the one the ledger
+        holds, and that is a department, not an error."""
         self.vendor.street = "99 ZZ Curated Avenue"
 
         move, summary = self._apply(self.vendor, _extraction(street="1 ZZ Nowhere Road"))
@@ -184,7 +203,11 @@ class TestTheSafeHalf(_SuggestionCase):
         self.assertFalse(row.is_sensitive)
 
     def test_the_same_phone_printed_differently_is_not_a_conflict(self):
-        """The same phone number in another notation is not a conflict."""
+        """🔴 WITHOUT THIS EVERY VENDOR WITH A PHONE IS A "CONFLICT". The
+        record holds `+1 212-555-0111` and the Bluebird invoice prints
+        `212.555.0111` — the same telephone, printed two ways. A line
+        that says "1 detail differs" on every single bill is a line nobody
+        reads."""
         self.vendor.phone = "+1 718-555-0111"
 
         move, _summary = self._apply(self.vendor, _extraction(phone="718.555.0111"))
@@ -195,8 +218,11 @@ class TestTheSafeHalf(_SuggestionCase):
         )
 
     def test_a_genuinely_different_phone_is_a_conflict_that_keeps_both(self):
-        """A different number is a conflict; applying it adds the number as an
-        identifier and keeps the contact's phone."""
+        """🔴 THE CONTROL for the test above — a normaliser that collapsed
+        everything would hide a real second number. And note what applying it
+        does NOT do: the contact keeps its phone, and the invoice's number is
+        stored as another way the vendor is reached. F27: *"Phone, email and
+        website add beside, they do not replace."*"""
         self.vendor.phone = "+1 718-555-0111"
 
         move, _summary = self._apply(self.vendor, _extraction(phone="(973) 555-0144"))
@@ -215,9 +241,13 @@ class TestTheSafeHalf(_SuggestionCase):
         )
 
     def test_a_state_odoo_does_not_know_is_never_invented(self):
-        """An unknown state code never creates a `res.country.state`; carriers
-        reject bookings with invented states. The country in the same
-        extraction is still applied."""
+        """🔴 An import that invents US "states" — say a SECOND "New Jersey"
+        whose code is `1` — breaks shipping: the state code is what Odoo sends
+        to a carrier, which refuses a booking over it.
+
+        CONTROL: the country in the same extraction IS applied, so an apply that
+        had simply skipped this vendor could not pass.
+        """
         State = self.env["res.country.state"]
         before = State.search_count([])
 
@@ -234,7 +264,9 @@ class TestTheSafeHalf(_SuggestionCase):
         )
 
     def test_the_country_is_resolved_before_the_state_needs_it(self):
-        """The state lookup uses the country filled in by the same run."""
+        """A state code is only unique inside a country, so the lookup needs
+        one — and on a vendor that has neither, the country it needs is the one
+        this very run just filled in. Ordering bug if it reads the record."""
         move, summary = self._apply(
             self.vendor, _extraction(state_code="NJ", country_code="US")
         )
@@ -245,31 +277,39 @@ class TestTheSafeHalf(_SuggestionCase):
 
 
 @tagged("post_install", "-at_install")
-class TestWhatIsNeverAutomatic(_SuggestionCase):
-    """Bank accounts and tax ids are never written automatically, empty or not.
+class TestWhatIsNeverAutomatic(_F27Case):
+    """🔴 A BANK ACCOUNT AND A TAX ID, EMPTY OR NOT. Invoice fraud IS a changed
+    bank account — a real-looking invoice from a real-looking vendor carrying
+    somebody else's account — and vendor invoices often carry a printed
+    warning about exactly that scam.
 
-    A changed bank account is the classic invoice-fraud vector. Scope: these
-    tests cover `_ai_apply_vendor_data` only; core's UBL decoder creates the
-    vendor's `res.partner.bank` itself (`_find_or_create_bank_account`) before
-    this code runs.
+    ⚠️ SCOPE, SAID PLAINLY. These tests exercise `_ai_apply_vendor_data`, which
+    is what this feature owns. CORE'S UBL DECODER CREATES THE VENDOR'S
+    `res.partner.bank` ITSELF on an `in_invoice`
+    (`account_edi_ubl_cii/models/account_edi_ubl.py:2837-2865`,
+    `_find_or_create_bank_account`), one step before any of this runs, and part
+    1's `_ai_record_routing_number` depends on that row existing. So the rule
+    holds for everything F27 part 2 added and does NOT hold for the pipeline as
+    a whole. That is an open question, not something these tests
+    may paper over.
     """
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.vendor = cls.Partner.create(
-            {"name": "ZZ Example Fleet Hire & Hauling", "is_company": True}
+            {"name": "ZZ Tailspin Truck Leasing & Rental", "is_company": True}
         )
 
     def test_a_bank_account_is_never_written_even_when_the_vendor_has_none(self):
-        """The bank account is offered, not applied; an ordinary empty field in
-        the same extraction is written."""
+        """CONTROL: an ordinary empty field in the SAME extraction IS written,
+        so this cannot pass by doing nothing at all."""
         move, summary = self._apply(
             self.vendor,
             _extraction(
                 street="7 ZZ Depot Street",
-                routing_number="021000021",
-                account_number="ZZ5550001234",
+                routing_number="071000288",
+                account_number="ZZ4521992212",
             ),
         )
 
@@ -292,15 +332,21 @@ class TestWhatIsNeverAutomatic(_SuggestionCase):
         self.assertTrue(row.is_sensitive)
 
     def test_the_bulk_button_leaves_the_money_details_pending(self):
-        """Bulk apply skips sensitive rows and applies the ordinary ones."""
+        """🔴 Select-all is ONE CLICK. A money detail should get somebody's
+        individual attention rather than ride along in a batch of address
+        corrections.
+
+        CONTROL: the ordinary row in the same selection IS applied, so a button
+        that refused everything would not pass.
+        """
         self.vendor.street = "99 ZZ Curated Avenue"
         move, _summary = self._apply(
             self.vendor,
             _extraction(
                 street="7 ZZ Depot Street",
                 vat="12-3456789",
-                routing_number="021000021",
-                account_number="ZZ5550001234",
+                routing_number="071000288",
+                account_number="ZZ4521992212",
             ),
         )
         rows = self._pending(move)
@@ -316,40 +362,43 @@ class TestWhatIsNeverAutomatic(_SuggestionCase):
         self.assertFalse(self.vendor.bank_ids)
 
     def test_a_person_can_still_apply_one_money_detail_deliberately(self):
-        """A person can still apply a sensitive row individually."""
+        """🔴 THE CONTROL for the rule itself. "Never automatic" must not become
+        "never at all" — a data owner who checked the account against something
+        other than this invoice has to be able to record it, or the queue is a
+        list of things nobody can act on."""
         move, _summary = self._apply(
             self.vendor,
-            _extraction(routing_number="021000021", account_number="ZZ5550001234"),
+            _extraction(routing_number="071000288", account_number="ZZ4521992212"),
         )
         row = self._pending(move).filtered(lambda r: r.field_name == "bank_account")
 
         row.action_apply()
 
         self.assertEqual(row.state, "applied")
-        self.assertEqual(self.vendor.bank_ids.acc_number, "ZZ5550001234")
+        self.assertEqual(self.vendor.bank_ids.acc_number, "ZZ4521992212")
 
 
 @tagged("post_install", "-at_install")
-class TestTheNameIsNeverTouched(_SuggestionCase):
-    """The vendor name is curated on purpose and is never written or
-    suggested."""
+class TestTheNameIsNeverTouched(_F27Case):
+    """🔴 `NORTHWIND - Smith reps` against the `Northwind` the manufacturer prints on
+    its own paper. The name is the one field somebody curated on purpose."""
 
     def test_the_vendor_name_is_neither_written_nor_suggested(self):
-        """The name is not offered while another field in the same extraction
-        is."""
+        """CONTROL: a field in the same extraction DOES produce a suggestion, so
+        an apply that produced nothing at all could not pass."""
         vendor = self.Partner.create(
             {
-                "name": "ZZACME - Smith reps",
+                "name": "ZZNORTHWIND - Smith reps",
                 "is_company": True,
                 "street": "99 ZZ Curated Avenue",
             }
         )
 
         move, _summary = self._apply(
-            vendor, _extraction(name="ZZAcme", street="1 ZZ Factory Road")
+            vendor, _extraction(name="ZZNorthwind", street="1 ZZ Factory Road")
         )
 
-        self.assertEqual(vendor.name, "ZZACME - Smith reps")
+        self.assertEqual(vendor.name, "ZZNORTHWIND - Smith reps")
         self.assertFalse(
             move.ai_vendor_suggestion_ids.filtered(lambda r: r.field_name == "name"),
             "the name must not even be offered",
@@ -361,11 +410,13 @@ class TestTheNameIsNeverTouched(_SuggestionCase):
 
 
 @tagged("post_install", "-at_install")
-class TestTheNearDuplicateNames(_SuggestionCase):
-    """End to end: a manufacturer's bill against a rep agency in the ledger.
+class TestTheNorthwindStory(_F27Case):
+    """🔴 THE WHOLE FEATURE, END TO END, AND THE MOST VALUABLE TEST IN THIS PR.
 
-    No rule links the two. A person picks the candidate once, and the next bill
-    from that vendor matches without anyone involved.
+    The bill comes from the MANUFACTURER and the ledger holds the REP AGENCY
+    that sells for them — different company, different phone, different domain.
+    No rule derives one from the other. A person says so ONCE, and the next bill
+    from that vendor matches with nobody involved.
     """
 
     @classmethod
@@ -373,21 +424,53 @@ class TestTheNearDuplicateNames(_SuggestionCase):
         super().setUpClass()
         cls.agency = cls.Partner.create(
             {
-                "name": "ZZACME - Smith reps",
+                "name": "ZZNORTHWIND - Smith reps",
                 "is_company": True,
-                "supplier_rank": 86,
+                "supplier_rank": 63,
             }
         )
 
-    # The vendor name here is a substring of the agency's name. Core's name
-    # step must not match on a substring (older 19.0 builds used `ilike`), or
-    # the bill is silently filed against the agency and the candidate flow
-    # never runs. See also test_legacy_name_slot.
+    # 🔴 THE NEXT TWO WERE LEFT FAILING ON THE LEGACY BENCH, DELIBERATELY, AND
+    # THEY WERE THE MOST VALUABLE FAILURES IN THE SUITE. 🆕 THEY PASS ON BOTH
+    # BENCHES SINCE 19.0.3.8.0 — keep reading, because WHY they failed is the
+    # whole reason they are worth having, and the comment that claimed they
+    # were still red outlived the fix by one version (found in review).
+    #
+    # *(measured, before 19.0.3.8.0)* On the legacy build the first import filed
+    # the bill against `ZZNORTHWIND - Smith reps` — the agency — and neither
+    # assertion below could hold. Nothing was invented: core's own name step
+    # MATCHED it. The two cores spell that step differently and nobody had
+    # noticed:
+    #
+    #   * search-plan: `res.partner._import_retrieve_customer_from_name`
+    #     searches `[('name', '=ilike', name)]` — an EXACT, case-insensitive
+    #     match (`account/models/partner.py:1013` at `189df353`).
+    #   * legacy: `res.partner._retrieve_partner_with_name` searches
+    #     `[('name', 'ilike', name)]` — a SUBSTRING match
+    #     (`account/models/partner.py:956` at `ca1f0aea`).
+    #
+    # So on the legacy build a printed vendor name that is merely a SUBSTRING
+    # of an existing partner's name won, confidently — and because this
+    # module's whole recovery path (the note, the candidate cards, the
+    # learning) is gated on an EMPTY `partner_id`, a wrong match does not add a
+    # row, it SILENCES everything. F27's promise was therefore not kept on that
+    # build, and the dual-core design did not fix it: suppressing a CREATE cannot
+    # suppress a MATCH.
+    #
+    # 🆕 19.0.3.8.0 narrowed the slot this module owns to the other build's
+    # exact spelling, so the Northwind bill now arrives with no vendor and the
+    # candidate cards on BOTH builds, and these two are green on both. They stay
+    # UNGATED, which is the point: they are the end-to-end tripwire on that
+    # narrowing, and gating them would be how the gap comes back unnoticed.
+    #
+    # `test_legacy_name_slot.test_core_s_own_name_step_files_the_bill_against_
+    # the_wrong_vendor` asserts the same core behaviour deliberately, from the
+    # other side, so the difference is on the record twice.
     def test_picking_a_candidate_once_teaches_the_matcher(self):
         first = self._import(
             _extraction(
-                name="ZZAcme",
-                website="https://www.zzacme-factory.com",
+                name="ZZNorthwind",
+                website="https://www.zznorthwind-factory.test",
                 street="1 ZZ Factory Road",
             )
         )
@@ -408,7 +491,7 @@ class TestTheNearDuplicateNames(_SuggestionCase):
             "the question has been answered; the alternatives go",
         )
         self.assertIn(
-            ("domain", "zzacme-factory.com"),
+            ("domain", "zznorthwind-factory.test"),
             [(r.kind, r.value) for r in self.agency.identifier_ids],
             "the domain printed on the manufacturer's invoice is now the "
             "agency's — this is the learning",
@@ -419,9 +502,9 @@ class TestTheNearDuplicateNames(_SuggestionCase):
             "and the empty fields were filled while we were there",
         )
 
-        # 3. the second bill, through the whole pipeline, with no human.
+        # 3. THE SECOND BILL, through the whole pipeline, with no human.
         second = self._import(
-            _extraction(name="ZZAcme", website="https://www.zzacme-factory.com")
+            _extraction(name="ZZNorthwind", website="https://www.zznorthwind-factory.test")
         )
 
         self.assertEqual(
@@ -429,19 +512,21 @@ class TestTheNearDuplicateNames(_SuggestionCase):
             self.agency,
             "the second bill from the same vendor must match by itself — if "
             "this fails, picking a candidate taught the matcher nothing and "
-            "the suggestion has no point",
+            "F27 part 2 has no point",
         )
         self.assertFalse(
             second.ai_vendor_candidate_ids, "a matched bill offers no candidates"
         )
 
     def test_a_vendor_nobody_picks_teaches_nothing(self):
-        """Without a pick, the second bill does not match."""
+        """🔴 THE CONTROL. If the second import above matched because of the
+        NAME, or because anything at all was written at import time, this would
+        match too — and it must not."""
         self._import(
-            _extraction(name="ZZAcme", website="https://www.zzacme-factory.com")
+            _extraction(name="ZZNorthwind", website="https://www.zznorthwind-factory.test")
         )
         second = self._import(
-            _extraction(name="ZZAcme", website="https://www.zzacme-factory.com")
+            _extraction(name="ZZNorthwind", website="https://www.zznorthwind-factory.test")
         )
 
         self.assertFalse(
@@ -450,13 +535,14 @@ class TestTheNearDuplicateNames(_SuggestionCase):
         )
 
     def test_the_stored_extraction_is_found_again_and_not_stored_a_third_time(self):
-        """`action_use_this` reads the stored extraction back; it is not copied
-        onto the candidate row."""
-        move = self._import(_extraction(name="ZZAcme", street="1 ZZ Factory Road"))
+        """`action_use_this` reads the extraction back. F27: *"It needs no new
+        stored data"* — so it must come from one of the two copies that already
+        exist, not from a field on the candidate row."""
+        move = self._import(_extraction(name="ZZNorthwind", street="1 ZZ Factory Road"))
 
         found = move._ai_stored_extraction()
 
-        self.assertEqual(found["invoice_number"], "ZZ-VS-2")
+        self.assertEqual(found["invoice_number"], "ZZ-F27-2")
         self.assertNotIn(
             "extraction",
             self.Candidate._fields,
@@ -465,12 +551,15 @@ class TestTheNearDuplicateNames(_SuggestionCase):
 
 
 @tagged("post_install", "-at_install")
-class TestTheFormAndTheQueue(_SuggestionCase):
-    """The XML parts, checked against the arch the server produces. This
-    catches a silently dropped xpath, not visual layout."""
+class TestTheFormAndTheQueue(_F27Case):
+    """The parts that live in XML. ⚠️ READ-VERIFIED, NOT SEEN RENDERED — there
+    was no browser. These assert the arch the server actually produces, which
+    catches a silently-dropped xpath; they say nothing about how it looks."""
 
     def test_the_candidate_list_and_the_conflict_line_are_in_the_bill_form(self):
-        """The inherited elements are present in the rendered bill form."""
+        """🔴 An inherit whose xpath stops matching is SILENT: the feature is
+        simply absent and every gate stays green. `get_view` is what the client
+        actually receives."""
         arch = self.AM.get_view(
             self.env.ref("account.view_move_form").id, "form"
         )["arch"]
@@ -482,10 +571,17 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         self.assertIn("ai_vendor_suggestion_count", arch)
 
     def test_the_candidates_render_as_cards_and_not_as_a_cramped_grid(self):
-        """Candidates render as a kanban, not a list (a list clipped the
-        distinguishing part of long vendor names).
+        """🔴 WHY A SERVER TEST ASSERTS A VIEW TYPE AT ALL. The four-column
+        `<list>` this replaced installed cleanly, passed every gate, and in a
+        browser clipped the vendor to "NORTHWIND - Smith r…" — which is precisely
+        the half of the name that tells the three Northwind candidates apart. A
+        test cannot see the clipping; it CAN see somebody quietly putting the
+        list back.
 
-        The kanban class is also what the stylesheet rule hangs off.
+        It also pins the class the one stylesheet rule hangs off: core declares
+        `--KanbanRecord-width` ON `.o_kanban_renderer`, so the override has to
+        be a descendant selector from this class, and a rename here would leave
+        the rule matching nothing with everything still green.
         """
         from lxml import etree
 
@@ -512,10 +608,12 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         self.assertEqual(kanban[0].get("create"), "false")
 
     def test_the_conflict_line_counts_only_pending_rows(self):
-        """The suggestion count includes only pending rows."""
+        """CONTROL: a clean import shows none. A count that read
+        `len(ai_vendor_suggestion_ids)` would put a line on every bill that ever
+        had one — including the ones already dealt with."""
         vendor = self.Partner.create(
             {
-                "name": "ZZ Counting Probe",
+                "name": "ZZ Contoso Counting Probe",
                 "is_company": True,
                 "street": "99 ZZ Curated Avenue",
             }
@@ -534,8 +632,10 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_not_now_hides_the_line_and_leaves_the_rows_for_the_queue(self):
-        """"Not now" defers the bill but leaves the rows pending for the
-        queue."""
+        """🔴 "Not now" must NOT dismiss. The queue is filtered on `pending`, so
+        dismissing here would answer the question it exists to ask — and the
+        person entering a bill would have silently decided for the person who
+        owns vendor data."""
         vendor = self.Partner.create(
             {
                 "name": "ZZ Defer Probe",
@@ -555,13 +655,15 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_every_search_default_names_a_filter_that_exists(self):
-        """Every `search_default_*` in the action names an existing filter;
-        unknown ones are dropped silently by the client.
+        """🔴 AN UNKNOWN `search_default_X` IS SILENTLY DROPPED. No error, no
+        log line — you get an ungrouped list and conclude the grouping "did not
+        work". This reads the action's own context and the search view's own
+        arch, so a typo in either cannot pass.
         """
         from lxml import etree
 
         action = self.env.ref(
-            "goodahead_invoice_ai_import.action_vendor_data_suggestion"
+            "goodahead_invoice_import.action_vendor_data_suggestion"
         )
         context = json.loads(action.context.replace("'", '"'))
         wanted = [
@@ -584,8 +686,12 @@ class TestTheFormAndTheQueue(_SuggestionCase):
             )
 
     def test_the_review_button_opens_this_bills_pending_rows_in_a_dialog(self):
-        """The review button opens a wizard over exactly this bill's pending
-        rows.
+        """🔴 IT OPENS A WIZARD NOW, NOT THE QUEUE'S OWN LIST VIEW. A list
+        inside a modal was not what the design called for — it asks for
+        wizards and modals that read clearly. So the
+        assertion moved from "the domain is right" to "a wizard was built over
+        exactly this bill's pending rows" — a domain cannot be wrong in a way
+        this catches, but a wizard built over the wrong rows can.
         """
         vendor = self.Partner.create(
             {
@@ -629,8 +735,11 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_nothing_sensitive_is_pre_ticked_and_everything_else_is(self):
-        """Ordinary rows are pre-ticked in the wizard; sensitive rows never
-        are.
+        """🔴 THE WHOLE PROTECTION IN THIS DIALOG IS ONE DEFAULT. F27 asks for a
+        DELIBERATE ACT on a bank account or a tax id, and here that act is
+        ticking a box nobody ticked for you. The control is the other half: if
+        the wizard pre-ticked NOTHING the safety assertion would pass while the
+        feature did nothing, which is this project's signature failure shape.
         """
         vendor = self.Partner.create(
             {"name": "ZZ Pre-tick Probe", "is_company": True}
@@ -673,8 +782,9 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_apply_selected_writes_the_ticked_row_and_only_that_one(self):
-        """The wizard applies the ticked row and leaves the unticked one
-        pending."""
+        """The wizard must not reimplement the apply, and it must not apply
+        what nobody ticked. Both halves in one test, because either on its own
+        passes while the other is broken."""
         vendor = self.Partner.create(
             {
                 "name": "ZZ Wizard Apply Probe",
@@ -713,8 +823,9 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_not_now_in_the_wizard_defers_the_bill_and_keeps_the_rows(self):
-        """The wizard's "Not now" defers the bill and keeps the rows
-        pending."""
+        """Same contract as the thin line's own "Not now": hand it on, do not
+        answer it. A wizard that dismissed would decide on behalf of whoever
+        owns vendor data."""
         vendor = self.Partner.create(
             {
                 "name": "ZZ Wizard Defer Probe",
@@ -734,8 +845,10 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         self.assertEqual(self._pending(move).mapped("state"), ["pending"])
 
     def test_a_queue_row_opens_its_whole_vendor_not_the_single_row(self):
-        """A queue row opens the review for all of that vendor's pending rows,
-        and no other vendor's."""
+        """🔴 THE SCOPE IS THE FEATURE. The queue is grouped by vendor so one
+        person can do a vendor at a time; a row click that opened one
+        suggestion would put them back to one detail at a time, which is how
+        the same correction arrives seven times."""
         vendor = self.Partner.create(
             {"name": "ZZ Queue Click Probe", "is_company": True}
         )
@@ -788,15 +901,18 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         )
 
     def test_the_queue_row_click_and_the_wizard_buttons_name_real_methods(self):
-        """The list row action and the wizard's footer buttons name existing
-        methods; a wrong name only fails at click time.
+        """🔴 A `<list action="…">` OR A FOOTER BUTTON NAMING A METHOD THAT DOES
+        NOT EXIST FAILS AT CLICK TIME, IN THE BROWSER, AND NOWHERE ELSE. The
+        install is green, every gate is green, and the screen is dead. This is
+        the same class of defect as a `search_default_` naming no filter, and it
+        is checked the same way — against the arch the server really ships.
         """
         from lxml import etree
 
         queue = etree.fromstring(
             self.Suggestion.get_view(
                 self.env.ref(
-                    "goodahead_invoice_ai_import."
+                    "goodahead_invoice_import."
                     "view_vendor_data_suggestion_list"
                 ).id,
                 "list",
@@ -811,7 +927,7 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         form = etree.fromstring(
             Review.get_view(
                 self.env.ref(
-                    "goodahead_invoice_ai_import.view_vendor_data_review_form"
+                    "goodahead_invoice_import.view_vendor_data_review_form"
                 ).id,
                 "form",
             )["arch"]
@@ -822,8 +938,9 @@ class TestTheFormAndTheQueue(_SuggestionCase):
             self.assertIn(name, dir(Review), "%s is not a method" % name)
 
     def test_applying_a_state_suggestion_round_trips(self):
-        """A state suggestion stores the code, which is what the apply looks
-        up."""
+        """🔴 THE ROW HAS TO HOLD WHAT THE APPLY CONSUMES. Storing the display
+        name ("New Jersey (US)") would read perfectly in the queue and then
+        refuse to apply, because the lookup is by CODE."""
         vendor = self.Partner.create(
             {"name": "ZZ State Round Trip", "is_company": True}
         )
@@ -842,8 +959,10 @@ class TestTheFormAndTheQueue(_SuggestionCase):
         self.assertEqual(row.state, "applied")
 
     def test_a_state_suggestion_that_cannot_resolve_refuses_loudly(self):
-        """Applying a state code that resolves to nothing raises instead of
-        silently doing nothing."""
+        """CONTROL for the round trip: the apply must not silently do nothing
+        when the value resolves to no record. An invented state is what a silent write
+        produces; a silent no-op is how you find out a year later that the queue
+        never did anything."""
         vendor = self.Partner.create(
             {
                 "name": "ZZ State Refusal",

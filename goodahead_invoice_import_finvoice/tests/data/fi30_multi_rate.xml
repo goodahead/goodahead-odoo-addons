@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented fixture: four VAT classes — 10 %, 14 %, 25,5 %, 0 % exempt (code E)
+     and 0 % without a code. -->
+<Finvoice Version="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice3.0.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000003-5</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Supplier Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000035</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>10046</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261116</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount AmountCurrencyIdentifier="EUR">190,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount AmountCurrencyIdentifier="EUR">33,70</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount AmountCurrencyIdentifier="EUR">223,70</InvoiceTotalVatIncludedAmount>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">40,00</VatBaseAmount>
+      <VatRatePercent>10</VatRatePercent>
+      <VatCode>S</VatCode>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">4,00</VatRateAmount>
+    </VatSpecificationDetails>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">30,00</VatBaseAmount>
+      <VatRatePercent>14</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">4,20</VatRateAmount>
+    </VatSpecificationDetails>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">100,00</VatBaseAmount>
+      <VatRatePercent>25,5</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">25,50</VatRateAmount>
+    </VatSpecificationDetails>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">15,00</VatBaseAmount>
+      <VatRatePercent>0</VatRatePercent>
+      <VatCode>E</VatCode>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">0,00</VatRateAmount>
+      <VatFreeText>Vakuutuspalvelu, AVL 44 §</VatFreeText>
+    </VatSpecificationDetails>
+    <VatSpecificationDetails>
+      <VatBaseAmount AmountCurrencyIdentifier="EUR">5,00</VatBaseAmount>
+      <VatRatePercent>0</VatRatePercent>
+      <VatRateAmount AmountCurrencyIdentifier="EUR">0,00</VatRateAmount>
+    </VatSpecificationDetails>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleName>Kirja</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">2</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">20,00</UnitPriceAmount>
+    <RowVatRatePercent>10</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">4,00</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">40,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Elintarvike</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">3</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">10,00</UnitPriceAmount>
+    <RowVatRatePercent>14</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">4,20</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">30,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Laite</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">1</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">100,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">25,50</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">100,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Vakuutus</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">1</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">15,00</UnitPriceAmount>
+    <RowVatRatePercent>0</RowVatRatePercent>
+    <RowVatCode>E</RowVatCode>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">0,00</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">15,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Postimaksu</ArticleName>
+    <DeliveredQuantity QuantityUnitCodeUN="C62">1</DeliveredQuantity>
+    <UnitPriceAmount AmountCurrencyIdentifier="EUR">5,00</UnitPriceAmount>
+    <RowVatRatePercent>0</RowVatRatePercent>
+    <RowVatAmount AmountCurrencyIdentifier="EUR">0,00</RowVatAmount>
+    <RowVatExcludedAmount AmountCurrencyIdentifier="EUR">5,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261116</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails>
+        <EpiBfiIdentifier IdentificationSchemeName="BIC">EXMPFIHH</EpiBfiIdentifier>
+      </EpiBfiPartyDetails>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Supplier Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI1612345600000002</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiRemittanceInfoIdentifier IdentificationSchemeName="SPY">10001235</EpiRemittanceInfoIdentifier>
+      <EpiInstructedAmount AmountCurrencyIdentifier="EUR">223,70</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SLEV">SLEV</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261130</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

@@ -1,16 +1,25 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""Vendor de-duplication: match an existing vendor by VAT or business id.
+"""Vendor de-duplication: match an existing vendor by VAT or business id
+(company_registry, scoped by country). VAT and business id are independent
+identifiers — neither is derived from the other.
 
-The business id (company_registry) is scoped by country and independent of the VAT.
-The tests drive the search-plan step the core actually uses during a UBL import.
-Fake `ZZ-…` identifiers avoid matching existing partners.
+🔴 THESE TESTS WERE REWRITTEN FOR THIS TREE. On the source project the business
+id fallback hangs off `res.partner._retrieve_partner`, and these tests called
+that method. The core here never calls it during a UBL import, so those tests
+would have gone on passing while testing a code path production never reaches —
+a green suite proving nothing. They now drive the search-plan step that this
+core actually uses, and `test_business_id_step_is_in_the_plan_before_name` plus
+`test_decoder_matches_the_vendor_by_business_id` fail if the re-hook is removed.
+
+Uses clearly-fake identifiers (ZZ-…) so the DB-touching tests never collide with
+real vendors that may already exist in the database.
 """
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_SEARCH_PLAN,
 )
 
@@ -50,16 +59,16 @@ class TestVendorMatching(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_registry_variants_formatting_only(self):
-        v = self.Partner._registry_variants("1234567-8")
-        self.assertIn("1234567-8", v)
-        self.assertIn("12345678", v)
+        v = self.Partner._registry_variants("0000007-8")
+        self.assertIn("0000007-8", v)
+        self.assertIn("00000078", v)
         self.assertIn("HRB12345", self.Partner._registry_variants("HRB 12345"))
 
     def test_vat_country_code(self):
         self.assertEqual(self.Partner._vat_country_code("DE811234567"), "DE")
-        self.assertEqual(self.Partner._vat_country_code("FI12345678"), "FI")
+        self.assertEqual(self.Partner._vat_country_code("FI00000078"), "FI")
         self.assertEqual(self.Partner._vat_country_code("ATU12345678"), "AT")
-        self.assertIsNone(self.Partner._vat_country_code("1234567-8"))
+        self.assertIsNone(self.Partner._vat_country_code("0000007-8"))
 
     # ------------------------------------------------------------------
     # The plan step itself
@@ -111,7 +120,9 @@ class TestVendorMatching(TransactionCase):
         )
 
     def test_no_match_without_country(self):
-        """A business id is only unique within its country, so no country means no match."""
+        """A business id is only unique within its country — with no country
+        this must decline rather than search the whole database on a short
+        numeric string."""
         self.assertFalse(
             self._step({"vat": "ZZ-FI-0001"}, ai_seller_business_id="ZZ-FI-0001")
         )
@@ -128,17 +139,27 @@ class TestVendorMatching(TransactionCase):
         )
 
     # ------------------------------------------------------------------
-    # The step must be in the search plan, in the right place
+    # 🔴 The re-hook: the step must be IN the plan, and in the right place
     # ------------------------------------------------------------------
 
-    # The legacy build has no search plan; its ordering is covered by
-    # `test_legacy_name_slot.TestTheNameSlotAdapter`.
+    # 🔴 The SEARCH PLAN itself is the build. `_import_ubl_retrieve_customer_
+    # search_plan` has no core definition on the legacy build — there is no plan
+    # there at all — so `super()` raises and no portable spelling of this test
+    # exists. The legacy build's equivalent ordering claim (our keys below core's
+    # exact keys, above core's substring name match) is asserted at its own seam
+    # by `test_legacy_name_slot.TestTheNameSlotAdapter`, which is where the
+    # ordering actually lives there. The two together cover the rule on both.
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_business_id_step_is_in_the_plan_before_name(self):
-        """The business-id step sits after the exact keys and before the name match.
+        """Proves the re-hook is wired, and wired at the slot we chose.
 
-        Core's name step is an `ilike` substring match, so a business-id step after
-        it would lose to "ABC Oy" matching "ABC Oy Holding".
+        This is the test that fails if somebody deletes
+        `_import_ubl_retrieve_customer_search_plan`, or "tidies" the insertion
+        into an append. Position matters: core matches names with
+        ``('name', 'ilike', name)``, a SUBSTRING match, so a business-id step
+        placed after it would be beaten by "ABC Oy" matching "ABC Oy Holding".
+        It must also stay below the exact identity keys (vat, eas endpoint,
+        email, phone), which a plain `insert(0, ...)` would break.
         """
         plan = self.env["account.edi.xml.ubl_bis3"]._import_ubl_retrieve_customer_search_plan(
             {"company": self.env.company}
@@ -168,10 +189,16 @@ class TestVendorMatching(TransactionCase):
                 )
 
     def test_decoder_matches_the_vendor_by_business_id(self):
-        """The business-id step runs inside a real decode.
+        """🔴 The fact, not the proxy: the step RUNS inside a real decode.
 
-        Name and VAT match nothing, so only the business id can resolve the vendor.
-        Asserted before `_ai_post_process`, which has its own business-id matching.
+        The seller is given a name that matches no partner and a VAT that
+        matches no partner, so the ONLY thing that can resolve this vendor is
+        the business id arriving on the context. The assertion is made on the
+        move straight after `_ai_decode_ubl_into_move` and BEFORE
+        `_ai_post_process` — deliberately, because post-processing has its own
+        business-id matching in `_create_partner_from_extraction`, and going
+        through `_process_import` would let this pass with the decoder hook
+        removed. Isolating the decoder is what makes it evidence.
         """
         extracted = {
             "type": "Invoice",
@@ -248,10 +275,35 @@ class TestVendorMatching(TransactionCase):
         self.assertEqual(inv.partner_id, self.fi_vendor, "must reuse, not duplicate")
 
     def test_name_fallback_ignores_child_contacts(self):
-        """The exact-name fallback must not assign a child contact as the vendor.
+        """The weak exact-name fallback must not assign a CHILD CONTACT as the
+        vendor — and the test for that is `parent_id`, not `is_company`.
 
-        The rule is `parent_id = False`, not `is_company`: in imported contact books
-        the company flag is often unset on real vendors.
+        ⚠️ REWRITTEN TWICE, AND THE SECOND REWRITE IS THE INTERESTING ONE.
+        It first asserted `is_company`, which passed only because the import
+        MINTED a company. Then, with nothing minted any more, it asserted that a
+        partner with `is_company = False` is never picked — and that assertion
+        was WRONG ABOUT THIS BUSINESS.
+
+        🔴 MEASURED ON a migrated test database, of the partners with
+        `supplier_rank > 0`: **most are `is_company = True`, and a large
+        minority are `is_company = False` with no parent** — the vendors the
+        `Northwind` and `Bluebird` sample documents come from among them. The
+        flag is simply unset across a large part of a contact book that was
+        imported years ago; it says nothing about whether the row is a company.
+        Filtering on it silently excluded a large part of the vendor book, and
+        `_ai_vendor_candidates` returned an EMPTY list for `Northwind`, the one
+        case F27 was designed around.
+
+        So the rule is `parent_id = False`: a child contact has a parent and a
+        vendor does not. That is what the original comment meant, and it
+        excludes exactly the rows it was written to exclude.
+
+        ⚠️ THE COST, STATED RATHER THAN HIDDEN: a TOP-LEVEL individual who
+        happens to share a vendor's exact name can now be picked by the name
+        step. Nothing in this database distinguishes them, so the mitigation is
+        ordering, not filtering — `supplier_rank desc` puts the real vendor
+        first, and the name step is the LAST step, after VAT, business id,
+        phone and domain. The second half of this test pins that ordering.
         """
         child = self.Partner.create(
             {
@@ -275,7 +327,15 @@ class TestVendorMatching(TransactionCase):
         )
 
     def test_a_top_level_vendor_without_the_company_flag_is_still_matched(self):
-        """Control: a top-level vendor with `is_company` unset is still matched by name."""
+        """CONTROL for the test above, and the regression the sample documents
+        actually hit.
+
+        Vendors such as `Northwind`'s rep agency and `Bluebird` are
+        `is_company = False` and top-level. If the name step ever goes back to filtering on
+        `is_company`, this fails — and this is the half that matters, because
+        the other half fails safe (nothing is picked) while this one fails by
+        minting a duplicate vendor beside a real one.
+        """
         vendor = self.Partner.create(
             {"name": "ZZ Reps Unflagged", "is_company": False, "supplier_rank": 5}
         )
@@ -286,14 +346,18 @@ class TestVendorMatching(TransactionCase):
         self.assertEqual(
             inv.partner_id,
             vendor,
-            "a top-level vendor must match even with `is_company` unset, which "
-            "is common in real contact books",
+            "a top-level vendor must match even with `is_company` unset — a "
+            "large part of a real vendor book is in exactly that state",
         )
 
     def test_a_real_vendor_outranks_a_namesake_individual(self):
-        """Of two top-level namesakes, the one with higher `supplier_rank` wins.
+        """The mitigation for what `parent_id = False` lets through.
 
-        The namesake is created first, so this tests the ordering, not insertion order.
+        Two top-level partners share a name. One has bought nothing; the other
+        is a vendor. The ordering is `supplier_rank desc, create_date asc`, so
+        the vendor wins — and it wins even though the namesake was created
+        FIRST, which is what makes this a test of the ordering rather than of
+        the insertion order.
         """
         namesake = self.Partner.create(
             {"name": "ZZ Ambiguous Name", "is_company": False}
@@ -309,9 +373,16 @@ class TestVendorMatching(TransactionCase):
         self.assertNotEqual(inv.partner_id, namesake)
 
     def test_unmatched_vendor_is_not_created(self):
-        """An unrecognised vendor leaves the bill without a partner; none is created.
+        """🔴 The 19.0.3.0.0 behaviour change, pinned.
 
-        Creating one tended to duplicate an existing vendor stored under another name.
+        This test replaces `test_fallback_creates_with_registry_when_no_match`,
+        which asserted the opposite and was correct until a sample run measured
+        what it cost: most sample bills filed against a brand-new partner beside
+        an active, long-standing vendor.
+
+        CONTROL: `res.partner.search_count` is read before and after, so a
+        version of the code that creates the partner under a different name — or
+        in a different method — still fails here.
         """
         Partner = self.Partner.with_context(active_test=False)
         before = Partner.search_count([])

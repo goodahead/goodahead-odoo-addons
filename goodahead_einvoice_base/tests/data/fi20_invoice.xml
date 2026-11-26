@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="ISO-8859-15"?>
+<!-- Invented fixture: a Finvoice 2.0 invoice with no currency attributes and no
+     VAT breakdown (the rows carry their VAT; guideline §14 builds the breakdown
+     from them). Plain ASCII so the declared encoding is honest. -->
+<Finvoice Version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="Finvoice.xsd">
+  <SellerPartyDetails>
+    <SellerPartyIdentifier>0000008-6</SellerPartyIdentifier>
+    <SellerOrganisationName>Example Consulting Oy</SellerOrganisationName>
+    <SellerOrganisationTaxCode>FI00000086</SellerOrganisationTaxCode>
+  </SellerPartyDetails>
+  <BuyerPartyDetails>
+    <BuyerOrganisationName>Example Buyer Oy</BuyerOrganisationName>
+  </BuyerPartyDetails>
+  <InvoiceDetails>
+    <InvoiceTypeCode>INV01</InvoiceTypeCode>
+    <InvoiceTypeText>LASKU</InvoiceTypeText>
+    <OriginCode>Original</OriginCode>
+    <InvoiceNumber>20-118</InvoiceNumber>
+    <InvoiceDate Format="CCYYMMDD">20261015</InvoiceDate>
+    <InvoiceTotalVatExcludedAmount>140,00</InvoiceTotalVatExcludedAmount>
+    <InvoiceTotalVatAmount>29,90</InvoiceTotalVatAmount>
+    <InvoiceTotalVatIncludedAmount>169,90</InvoiceTotalVatIncludedAmount>
+  </InvoiceDetails>
+  <InvoiceRow>
+    <ArticleName>Koulutus</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="h">1</DeliveredQuantity>
+    <UnitPriceAmount>100,00</UnitPriceAmount>
+    <RowVatRatePercent>25,5</RowVatRatePercent>
+    <RowVatAmount>25,50</RowVatAmount>
+    <RowVatExcludedAmount>100,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Kurssimateriaali</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="kpl">2</DeliveredQuantity>
+    <UnitPriceAmount>15,00</UnitPriceAmount>
+    <RowVatRatePercent>10</RowVatRatePercent>
+    <RowVatAmount>3,00</RowVatAmount>
+    <RowVatExcludedAmount>30,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <InvoiceRow>
+    <ArticleName>Tilavuokra</ArticleName>
+    <DeliveredQuantity QuantityUnitCode="pv">1</DeliveredQuantity>
+    <UnitPriceAmount>10,00</UnitPriceAmount>
+    <RowVatRatePercent>14</RowVatRatePercent>
+    <RowVatExcludedAmount>10,00</RowVatExcludedAmount>
+  </InvoiceRow>
+  <EpiDetails>
+    <EpiIdentificationDetails>
+      <EpiDate Format="CCYYMMDD">20261015</EpiDate>
+      <EpiReference/>
+    </EpiIdentificationDetails>
+    <EpiPartyDetails>
+      <EpiBfiPartyDetails/>
+      <EpiBeneficiaryPartyDetails>
+        <EpiNameAddressDetails>Example Consulting Oy</EpiNameAddressDetails>
+        <EpiAccountID IdentificationSchemeName="IBAN">FI7512345600000007</EpiAccountID>
+      </EpiBeneficiaryPartyDetails>
+    </EpiPartyDetails>
+    <EpiPaymentInstructionDetails>
+      <EpiInstructedAmount>169,90</EpiInstructedAmount>
+      <EpiCharge ChargeOption="SHA">SHA</EpiCharge>
+      <EpiDateOptionDate Format="CCYYMMDD">20261029</EpiDateOptionDate>
+    </EpiPaymentInstructionDetails>
+  </EpiDetails>
+</Finvoice>

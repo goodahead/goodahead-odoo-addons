@@ -1,12 +1,17 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
-"""Release ownership of an inbound mail alias shipped by an earlier fork of this
-module.
 
-This module ships no `mail.alias`, but an earlier fork of it did, under
-`noupdate`, so on databases upgraded from it the xmlid survives. The alias may
-be in live use, so only the xmlid is removed and the alias itself is kept, as
-if it had been created by hand.
+"""Hand an inbound alias an older version shipped over to its operator.
+
+This module ships no `mail.alias`: whoever runs it creates the inbound address
+by hand. An older fork did ship one, `mail_alias_ai_invoice_import`, under
+`noupdate`, so on a database upgraded from it the xmlid outlives the file and
+the module still appears to own the address.
+
+That address may carry a deployment's live intake. Deleting it would stop the
+intake, so only the xmlid goes: the alias stays as
+it is, owned by nobody, exactly like one created by hand. A database that never
+had the row (the US deployment) is untouched.
 """
 
 import logging

@@ -3,14 +3,25 @@
 
 """Bank-number checksums, and the limits of what they can protect.
 
-The IBAN mod-97 check is shape-gated, so US numbers pass through it unjudged;
-`aba_checksum_fails` guards US routing numbers instead. A US account number has
-no checksum at all, which is stated here as a test.
+🔴 THE QUESTION THIS FILE ANSWERS. The module's most valuable guard is that a
+misread number never becomes a vendor bank account. That guard was built around
+the IBAN mod-97 check, and the US deployment's vendors do not have IBANs. The obvious
+fear is that the guard would now reject every legitimate US account — a silent,
+total failure of the thing that matters most.
+
+It does not, and `test_the_iban_guard_is_inert_for_us_numbers` is the proof: the
+mod-97 check is SHAPE-GATED, so a number that is not IBAN-shaped is passed
+through rather than judged. The real gap was the mirror image — US numbers were
+not rejected, they were simply UNGUARDED — and `aba_checksum_fails` closes it.
+
+⚠️ And one thing no test can fix, asserted here so it stays visible: a US
+ACCOUNT number has no checksum. `test_a_us_account_number_cannot_be_verified`
+exists to state that in code.
 """
 
 from odoo.tests import BaseCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.bank_numbers import (
+from odoo.addons.goodahead_invoice_import.lib.bank_numbers import (
     aba_checksum_fails,
     iban_checksum_fails,
     payee_account_number,
@@ -19,7 +30,7 @@ from odoo.addons.goodahead_invoice_ai_import.lib.bank_numbers import (
 
 # Real, published routing numbers — these identify banks, not accounts.
 VALID_ROUTING = ["021000021", "111000025", "026009593", "011401533"]
-VALID_IBANS = ["GB33BUKB20201555555555", "FI1640001000000017", "DE89370400440532013000"]
+VALID_IBANS = ["GB33BUKB20201555555555", "FI2912345600004521", "DE89370400440532013000"]
 
 
 @tagged("post_install", "-at_install")
@@ -33,15 +44,19 @@ class TestBankNumbers(BaseCase):
             self.assertFalse(iban_checksum_fails(iban), iban)
 
     def test_iban_checksum_catches_a_misread_digit(self):
-        # A valid IBAN with one digit too many.
-        self.assertTrue(iban_checksum_fails("FI16400010000000017"))
+        # A valid number read with one digit too many — the case that started it.
+        self.assertTrue(iban_checksum_fails("FI29123456000004521"))
 
     def test_iban_checksum_ignores_formatting(self):
-        self.assertFalse(iban_checksum_fails("FI16 4000 1000 0000 17"))
-        self.assertFalse(iban_checksum_fails("FI16400010000000 17"))
+        self.assertFalse(iban_checksum_fails("FI29 1234 5600 0045 21"))
+        self.assertFalse(iban_checksum_fails("FI29123456000045 21"))
 
     def test_the_iban_guard_is_inert_for_us_numbers(self):
-        """No US number is rejected by the IBAN check."""
+        """🔴 The headline: no US number is rejected by the IBAN check.
+
+        If this ever fails, every US vendor's bank details are being thrown
+        away and the bills are silently stating no account.
+        """
         us_numbers = [
             *VALID_ROUTING,
             "123456789",       # routing-shaped, bad ABA checksum
@@ -49,7 +64,7 @@ class TestBankNumbers(BaseCase):
             "000123456789",    # account number with leading zeros
             "12-3456789",      # hyphenated
             "4521 8899 0021",  # spaced
-            "987654320",
+            "630830900",
         ]
         for number in us_numbers:
             self.assertFalse(
@@ -73,19 +88,28 @@ class TestBankNumbers(BaseCase):
         self.assertTrue(aba_checksum_fails("123456789"))
 
     def test_aba_checksum_catches_a_transposed_digit(self):
-        """Two swapped digits are caught; the unswapped number is the control."""
+        """The error a human or a model actually makes: two digits swapped.
+
+        `021000021` -> `021000012`. The control is the line above it: the
+        unswapped number must pass, or this proves nothing.
+        """
         self.assertFalse(aba_checksum_fails("021000021"))
         self.assertTrue(aba_checksum_fails("021000012"))
 
     def test_aba_guard_is_inert_for_anything_not_nine_digits(self):
-        """Shape-gated like the IBAN check: non-routing values are not judged."""
+        """Shape-gated exactly like its IBAN twin: an IBAN, a longer account
+        number or an empty value is not a routing number and is not judged."""
         for number in [*VALID_IBANS, "1234567890", "12345678", "", None]:
             self.assertFalse(aba_checksum_fails(number), repr(number))
 
     def test_a_us_account_number_cannot_be_verified(self):
-        """A US account number carries no check digits, so it cannot be verified.
+        """🔴 Written down as a test because it is a limit, not a gap.
 
-        A clean import of a US bill means only the routing number was checked.
+        A US account number carries no check digits. `1234567890` and
+        `1234567891` are equally plausible, and no code can tell them apart. So
+        a clean import of a US bill does NOT mean the account number was
+        verified — only that the routing number was. Nobody should read the
+        absence of a warning as a guarantee.
         """
         for number in ["1234567890", "1234567891", "0", "99999999999999"]:
             self.assertFalse(aba_checksum_fails(number))
@@ -97,8 +121,8 @@ class TestBankNumbers(BaseCase):
 
     def test_payee_account_prefers_iban_then_account_number(self):
         self.assertEqual(
-            payee_account_number({"iban": "FI1640001000000017"}),
-            "FI1640001000000017",
+            payee_account_number({"iban": "FI2912345600004521"}),
+            "FI2912345600004521",
         )
         self.assertEqual(
             payee_account_number({"account_number": "1234567890"}), "1234567890"
@@ -106,9 +130,9 @@ class TestBankNumbers(BaseCase):
         # A foreign vendor who states both: the IBAN is globally unambiguous.
         self.assertEqual(
             payee_account_number(
-                {"iban": "FI1640001000000017", "account_number": "1234567890"}
+                {"iban": "FI2912345600004521", "account_number": "1234567890"}
             ),
-            "FI1640001000000017",
+            "FI2912345600004521",
         )
 
     def test_payee_institution_prefers_bic_then_routing(self):

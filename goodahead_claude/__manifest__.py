@@ -3,16 +3,10 @@
 {
     "name": "Goodahead Claude",
     "summary": "Generic Claude (Anthropic) API client for Odoo addons",
-    "description": """
-Generic Claude API client used by other Goodahead modules. Provides:
-
-* Per-company API key + default model configuration
-* Catalog of available Claude models (synced from the API)
-* AbstractModel `goodahead.claude.client` exposing `messages_create()` to other
-  addons, with native prompt caching support
-* "Test Connection" and "Sync Models" actions in General Settings
-""",
-    "version": "19.0.1.4.0",
+    "description": "Shared Claude API client for Goodahead add-ons: per-company API key, "
+    "default model and output limit, a model catalogue synced from the API, and "
+    "messages_create() for other add-ons. See README.md.",
+    "version": "19.0.1.4.2",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",

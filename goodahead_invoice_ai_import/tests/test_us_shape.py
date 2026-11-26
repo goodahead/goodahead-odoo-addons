@@ -3,9 +3,10 @@
 
 """A US vendor bill, end to end, and the multi-company expense categories.
 
-These go through the real UBL generator and Odoo decoder rather than asserting
-on the extraction dict, since a prompt-level fix can still fail to reach the
-bill.
+The module was written for a European business. These tests pin the parts that
+had to change for a US one, and they go through the real UBL generator and the
+real Odoo decoder rather than asserting on the extraction dict — because every
+one of these could be "fixed" in the prompt and still not reach the bill.
 """
 
 from unittest.mock import MagicMock, patch
@@ -15,7 +16,7 @@ from lxml import etree
 from odoo.exceptions import ValidationError
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
 
@@ -118,8 +119,12 @@ class TestUsShape(TransactionCase):
         self.assertEqual(institution.text, ROUTING)
 
     def test_a_misread_routing_number_takes_the_account_with_it(self):
-        """A routing number failing its checksum drops the account number too,
-        since ACH needs both."""
+        """🔴 Half a US account is not payable, and must not look payable.
+
+        The routing number fails its checksum, so it is dropped — and the
+        account number goes with it, because ACH needs both. The bill then
+        states no account at all, which is the honest outcome.
+        """
         extracted = _us_extracted(seller={"routing_number": BAD_ROUTING})
 
         tree = self._tree(extracted)
@@ -133,7 +138,8 @@ class TestUsShape(TransactionCase):
         self.assertEqual(extracted["seller"]["account_number_rejected"], ACCOUNT)
 
     def test_a_valid_routing_number_is_left_alone(self):
-        """A valid routing number and its account are kept."""
+        """The control for the test above — otherwise it could pass by always
+        dropping everything."""
         extracted = _us_extracted()
 
         self._tree(extracted)
@@ -142,17 +148,25 @@ class TestUsShape(TransactionCase):
         self.assertEqual(extracted["seller"]["account_number"], ACCOUNT)
 
     def test_no_peppol_endpoint_for_a_us_vendor(self):
-        """A US EIN gets no EndpointID: core matches partners on the
-        EndpointID/@schemeID pair, so a wrong scheme can match the wrong
-        vendor."""
+        """🔴 An EIN must not go out labelled as a German VAT number.
+
+        Core matches partners on the EndpointID/@schemeID pair, so a wrong
+        scheme does not merely mislabel — it can match the wrong vendor with
+        confidence. Where no scheme honestly applies, the element is omitted.
+        """
         tree = self._tree(_us_extracted())
 
         self.assertIsNone(tree.find(".//cac:AccountingSupplierParty//cbc:EndpointID", NS))
 
     def test_a_european_vendor_still_gets_its_endpoint(self):
-        """A European VAT number still gets its endpoint (DE uses `9930`, a
-        pair core itself defines). `test_peppol_endpoint.py` checks the whole
-        table against core.
+        """The control: omission is scheme-driven, not a blanket removal.
+
+        ⚠️ THIS TEST USED TO ASSERT `9925` FOR A FINNISH VENDOR, AND `9925` IS
+        BELGIAN VAT. It passed, because it read back the same hand-written table
+        the generator wrote from — so it pinned the bug instead of catching it.
+        Germany is used now because `9930` is a country/scheme pair core itself
+        states, and `test_peppol_endpoint.py` reconciles the whole table against
+        core rather than against a second copy of our own belief.
         """
         extracted = _us_extracted(
             seller={"vat": "DE123456789", "country_code": "DE", "state_code": None}
@@ -175,8 +189,16 @@ class TestUsShape(TransactionCase):
         self.assertEqual(subentity.text, "NJ")
 
     def test_currency_falls_back_to_the_companys_own(self):
-        """A missing currency falls back to the company's currency, not a
-        hard-coded default."""
+        """⚠️ THIS TEST USED TO READ `assertEqual(..., "USD")` AND IT PASSED ON
+        BOTH BENCHES — which is the defect, not the proof.
+
+        `adapters/ubl_generator.py` could not see the company at all: it fell back
+        to a compiled-in `DEFAULT_CURRENCY = "USD"`, so the assertion was true
+        on a Finnish database for entirely the wrong reason and the bill was
+        denominated in dollars. Asserting against `company.currency_id.name`
+        makes the two benches answer differently, which is what a portability
+        test is for. See the dual-core design.
+        """
         extracted = _us_extracted()
         extracted.pop("currency")
 
@@ -204,15 +226,28 @@ class TestUsShape(TransactionCase):
         )
 
     # ------------------------------------------------------------------
-    # The routing number must survive onto the bank account
+    # 🔴 The routing number must SURVIVE onto the bank account
     # ------------------------------------------------------------------
 
     def test_the_routing_number_lands_on_the_bank_account(self):
-        """The routing number is stored as the bank account's clearing number.
+        """Verifying a number and then discarding it is worse than not checking.
 
-        Core's UBL import never reads `FinancialInstitutionBranch/ID`, so
-        without `_ai_record_routing_number` the vendor gets a bare account
-        number that cannot be paid by ACH.
+        Core's `_import_ubl_invoice_add_partner_bank_values` collects exactly
+        `./PaymentMeans/PayeeFinancialAccount/ID` and never reads
+        `FinancialInstitutionBranch/ID`, so the routing number does not survive
+        the import on its own. Without `_ai_record_routing_number` the vendor
+        ends up with a bare US account number — which nobody can pay, because
+        ACH needs both halves. That is precisely the state the REJECTION path
+        refuses to create.
+
+        Asserting on the XML would not catch this: the element is there and the
+        account is still unpayable.
+
+        ⚠️ REWRITTEN FOR 19.0.3.0.0. It used to let
+        `_create_partner_from_extraction` MINT the vendor and its bank account.
+        No vendor is created any more, so the vendor is created here by hand and
+        matched by name — which is also the only shape of this scenario that can
+        still occur in production.
         """
         vendor = self.env["res.partner"].create(
             {"name": "ZZ Routing Probe", "is_company": True}
@@ -236,8 +271,9 @@ class TestUsShape(TransactionCase):
         )
 
     def test_the_routing_number_is_stamped_on_an_account_core_created(self):
-        """The routing number is also stamped on an account core created for an
-        existing vendor."""
+        """The other path: the vendor already exists, so core's own
+        `_import_ubl_retrieve_partner_bank` created the account and
+        `_create_partner_from_extraction` never ran."""
         vendor = self.env["res.partner"].create(
             {"name": "ZZ Existing Routing Vendor", "is_company": True}
         )
@@ -277,17 +313,22 @@ class TestUsShape(TransactionCase):
         self.assertEqual(bank.clearing_number, "111000025")
 
     # ------------------------------------------------------------------
-    # The checksums dispatch by shape, not by field name
+    # 🔴 The checksums dispatch by SHAPE, not by field name
     # ------------------------------------------------------------------
 
     def test_a_misread_iban_is_caught_even_in_the_account_number_field(self):
-        """An IBAN-shaped value in `account_number` is checked with mod-97 too;
-        without `base_iban` Odoo would not validate it."""
+        """The model choosing the wrong field is the reason the guards exist.
+
+        Dispatching mod-97 only on `seller["iban"]` means a misread IBAN that
+        Claude puts in `account_number` is recorded as a bank account unchecked.
+        ⚠️ `base_iban` is NOT installed on this database, so Odoo does not
+        validate it either — there is no second line of defence.
+        """
         extracted = _us_extracted(
             seller={
                 "iban": None,
                 "routing_number": None,
-                "account_number": "FI16400010000000017",  # one digit too many
+                "account_number": "FI29123456000004521",  # one digit too many
             }
         )
 
@@ -295,17 +336,17 @@ class TestUsShape(TransactionCase):
 
         self.assertEqual(
             extracted["seller"]["account_number_rejected"],
-            "FI16400010000000017",
+            "FI29123456000004521",
         )
         self.assertIsNone(extracted["seller"]["account_number"])
 
     def test_a_valid_iban_in_the_account_number_field_is_kept(self):
-        """A valid IBAN in `account_number` is kept."""
+        """The control: shape-gating must not make the guard trigger-happy."""
         extracted = _us_extracted(
             seller={
                 "iban": None,
                 "routing_number": None,
-                "account_number": "FI1640001000000017",  # valid
+                "account_number": "FI2912345600004521",  # valid
             }
         )
 
@@ -314,7 +355,7 @@ class TestUsShape(TransactionCase):
         self.assertNotIn("account_number_rejected", extracted["seller"])
 
     def test_a_misread_routing_number_in_the_iban_field_is_caught(self):
-        """A routing-number-shaped value in `iban` is checked as one."""
+        """The mirror case, for the same reason."""
         extracted = _us_extracted(
             seller={"iban": "021000012", "routing_number": None, "account_number": None}
         )
@@ -324,7 +365,7 @@ class TestUsShape(TransactionCase):
         self.assertEqual(extracted["seller"]["iban_rejected"], "021000012")
 
     # ------------------------------------------------------------------
-    # Credit memo signs
+    # 🔴 Credit memo signs — a refund that increases what is owed
     # ------------------------------------------------------------------
 
     def _credit_note(self, sign):
@@ -341,11 +382,15 @@ class TestUsShape(TransactionCase):
         return data
 
     def test_a_credit_note_extracted_as_negatives_is_normalised(self):
-        """Negative credit-note amounts are made positive.
+        """🔴 The `CreditNote` type code 381 ALREADY carries the sign.
 
-        Type code 381 already carries the sign; negatives inside it would
-        produce a refund that increases what is owed. Vendors print credit
-        memos both ways, so the generator normalises.
+        Negative amounts inside it negate a second time, and Odoo builds an
+        `in_refund` from the result — a refund that INCREASES what we owe. There
+        is no visible symptom at import; it looks like an ordinary credit note
+        until somebody reconciles.
+
+        Vendors print credit memos both ways, so the prompt alone cannot settle
+        it. The generator normalises.
         """
         tree = self._tree(self._credit_note(-1))
 
@@ -360,7 +405,8 @@ class TestUsShape(TransactionCase):
         self.assertEqual(tree.find(".//cbc:CreditNoteTypeCode", NS).text, "381")
 
     def test_a_credit_note_extracted_as_positives_is_untouched(self):
-        """A credit note with positive amounts passes through unchanged."""
+        """The control: normalisation keys off the document's own total, so a
+        correctly-stated credit note must pass through unchanged."""
         tree = self._tree(self._credit_note(1))
 
         self.assertEqual(
@@ -369,7 +415,8 @@ class TestUsShape(TransactionCase):
         )
 
     def test_normalisation_does_not_mutate_the_stored_extraction(self):
-        """Normalisation does not rewrite the stored extraction JSON."""
+        """The stored JSON is what a human edits and re-imports. Rewriting it
+        underneath them would be its own surprise."""
         extracted = self._credit_note(-1)
 
         generate_peppol_invoice_xml(extracted)
@@ -377,7 +424,8 @@ class TestUsShape(TransactionCase):
         self.assertLess(extracted["totals"]["payable"], 0)
 
     def test_an_invoice_with_a_negative_total_is_left_alone(self):
-        """Normalisation applies to credit notes only."""
+        """Normalisation is for CreditNotes only — an Invoice carrying negative
+        amounts means something else and is not ours to rewrite."""
         data = _us_extracted()
         data["totals"]["payable"] = -1066.25
 
@@ -405,9 +453,18 @@ class TestUsShape(TransactionCase):
         return invoice
 
     def test_no_state_is_created_from_an_extraction(self):
-        """No vendor and no `res.country.state` is created from an extraction,
-        for a known or an unknown state code (invented states break carrier
-        bookings)."""
+        """🔴 Imports with slipped columns can create bad US states — say a
+        second "New Jersey" whose code is "1" — which is what Odoo sends to a
+        carrier, and the carrier refuses a booking over it.
+        An AI extraction is the same class of input.
+
+        ⚠️ REWRITTEN FOR 19.0.3.0.0, AND IT NOW PROVES SOMETHING STRONGER THAN
+        IT DID. It used to pair with `test_a_known_state_is_set_on_the_vendor`,
+        which asserted that `NJ` landed on the partner the import MINTED. Since
+        no partner is minted, no address is written from an extraction at all,
+        so neither a known nor an unknown state code can reach
+        `res.country.state` — which is checked here for both.
+        """
         State = self.env["res.country.state"]
         before = State.search_count([])
 
@@ -429,10 +486,12 @@ class TestUsShape(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_shipped_categories_are_available_to_every_company(self):
-        """Shipped categories have no company, so every company sees them."""
+        """🔴 They used to land on whichever company installed the module, so
+        the other company got an empty list, a silently generic prompt and a
+        warning on every line."""
         Category = self.env["goodahead.expense.category"]
         shipped = self.env.ref(
-            "goodahead_invoice_ai_import.expense_category_goods"
+            "goodahead_invoice_import.expense_category_goods"
         )
         self.assertFalse(
             shipped.company_id,
@@ -447,7 +506,8 @@ class TestUsShape(TransactionCase):
             )
 
     def test_the_account_is_resolved_per_company(self):
-        """The category is shared but its account is company-dependent."""
+        """The whole reason the category is shared and the account is not: the
+        two companies have different charts of accounts."""
         companies = self.env["res.company"].search([], limit=2)
         if len(companies) < 2:
             self.skipTest("needs two companies")
@@ -476,8 +536,10 @@ class TestUsShape(TransactionCase):
         )
 
     def test_a_duplicate_code_is_refused_even_when_shared(self):
-        """Duplicate shared codes are refused by the Python check; a SQL unique
-        constraint does not treat two NULL company_ids as equal."""
+        """🔴 The SQL constraint cannot see this: two rows with the same code
+        and a NULL company_id do not collide in PostgreSQL, because NULL is not
+        equal to NULL. Without the Python check, `_apply_expense_categories`
+        would silently pick one of them by id order."""
         Category = self.env["goodahead.expense.category"]
         Category.create({"code": "zz_dupe", "name": "ZZ Dupe"})
 
@@ -498,8 +560,17 @@ class TestUsShape(TransactionCase):
             )
 
     def test_the_account_is_resolved_in_the_bills_company_not_the_envs(self):
-        """The account is resolved with the bill's company, even when the env
-        (e.g. a queue job enqueued from the mail path) is another company.
+        """🔴 THE CALL SITE, not the field.
+
+        `company_dependent` working is Odoo's business. What this module has to
+        get right is calling `with_company(company)` with the BILL's company —
+        a queue_job runs in whatever env enqueued it, which on the mail path is
+        the alias user's company and need not be the bill's. Without the
+        `with_company()` the account resolves against `env.company`, and since
+        the two companies have different charts that is not a near miss.
+
+        So this test deliberately runs with `env.company` set to the OTHER
+        company and asserts the bill still gets its own company's account.
         """
         companies = self.env["res.company"].search([], limit=2)
         if len(companies) < 2:
@@ -541,7 +612,7 @@ class TestUsShape(TransactionCase):
         extracted = _us_extracted()
         extracted["lines"][0]["expense_category"] = "zz_callsite"
 
-        # The env is deliberately the other company.
+        # 🔴 The env is the OTHER company — the condition the bug needs.
         AM_in_other_company = self.env["account.move"].with_company(other_company)
         self.assertEqual(AM_in_other_company.env.company, other_company)
         AM_in_other_company._apply_expense_categories(
@@ -558,16 +629,25 @@ class TestUsShape(TransactionCase):
         )
 
     def test_a_company_specific_category_beats_a_shared_one(self):
-        """`_ai_expense_category_for` prefers the company's own row over a
-        shared one with the same code.
+        """The lookup must prefer the company's own row.
 
-        Ordering by `company_id desc` would do the opposite, since PostgreSQL
-        sorts NULLs first on DESC. The pair is normally prevented by a
-        constraint, so it is created through SQL here.
+        🔴 It used to say `order="company_id desc, id asc"`, which does the
+        OPPOSITE: PostgreSQL's DESC implies NULLS FIRST, so the shared row sorts
+        to the top and wins. `_check_code_is_unambiguous` normally makes the
+        pair impossible, so this is reached only through `sudo`/SQL or a future
+        relaxation — which is exactly when nobody is watching.
+
+        🔴 AND IT USED TO COPY THE LOOKUP INSTEAD OF CALLING IT (found in
+        review). The two searches were written out again here and the test asserted
+        its own result, so `_apply_expense_categories` could have been changed
+        to anything at all and this would still have passed — a test that cannot
+        vary with the thing it names. The lookup is now
+        `account.move._ai_expense_category_for` and this calls it.
         """
         Category = self.env["goodahead.expense.category"]
         shared = Category.create({"code": "zz_pref", "name": "ZZ Shared"})
-        # Bypass the Python constraint to test the lookup itself.
+        # Bypass the Python constraint on purpose: the point is what the LOOKUP
+        # does if the pair ever exists, not whether it can be created normally.
         specific = Category.create(
             {"code": "zz_pref_tmp", "name": "ZZ Specific", "company_id": self.company.id}
         )
@@ -583,7 +663,9 @@ class TestUsShape(TransactionCase):
 
         self.assertEqual(found, specific, "the shared row won over the company's own")
         self.assertNotEqual(found, shared)
-        # Control: without the company row, the shared one is returned.
+        # CONTROL: with no company-specific row the SHARED one is what the same
+        # production call returns — so "it always returns `specific`" cannot
+        # pass, and neither can "it always returns nothing".
         specific.unlink()
         self.assertEqual(
             self.env["account.move"]._ai_expense_category_for("zz_pref", self.company),
@@ -591,8 +673,9 @@ class TestUsShape(TransactionCase):
         )
 
     def test_a_missing_account_names_the_company(self):
-        """The missing-account warning names the company lacking the
-        account."""
+        """The multi-company failure must be legible. "No account configured"
+        covered both "this code does not exist" and "nobody set an account for
+        THIS company", and the second is the one multi-company makes likely."""
         invoice = self.AM.create({"move_type": "in_invoice"})
         move = invoice  # readability
 
@@ -624,15 +707,18 @@ class TestUsShape(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestInboundLimits(TransactionCase):
-    """Inbound mail guards: a per-message PDF cap, a size limit, and the
-    company chosen by the alias. The alias itself is created by hand.
+    """The alias is created by hand, so these guards live in the code.
+
+    Whoever creates `billing@`, and whatever `alias_contact` they choose, one
+    message cannot enqueue an unbounded number of paid extractions and a huge
+    PDF is not sent at all.
     """
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.env = cls.env(context=dict(cls.env.context, tracking_disable=True))
-        cls.Import = cls.env["ai.invoice.import"]
+        cls.Import = cls.env["goodahead.invoice.import"]
 
     def _msg(self, attachments):
         return {
@@ -642,10 +728,14 @@ class TestInboundLimits(TransactionCase):
         }
 
     def test_the_module_ships_no_alias(self):
-        """The module owns no `mail.alias`; aliases are created by hand.
+        """🔴 Each installation creates its inbound alias by hand. A shipped alias
+        would sit beside it as a second live inbound address that nobody
+        expects, each message billing a Claude call.
 
-        Databases that had an alias from an earlier version keep it, with the
-        xmlid released by a migration.
+        An earlier fork shipped `mail_alias_ai_invoice_import`, and that alias
+        may be a deployment's live intake, so it must not be deleted. `migrations/19.0.3.32.0` releases the xmlid
+        instead: the alias stays, owned by nobody, like one created by hand.
+        After it, no database carries an alias owned by this module.
         """
         self.assertFalse(
             self.env["ir.model.data"].search_count(
@@ -694,10 +784,16 @@ class TestInboundLimits(TransactionCase):
         )
 
     def test_the_alias_decides_the_company(self):
-        """The alias's `alias_defaults` (as `custom_values`) set the company.
+        """🔴 Multi-company must not stop at the email door.
 
-        Otherwise `env.company` on the mail path is the alias user's company
-        for every bill, and a wrong company raises no error.
+        `company_id` defaults to `env.company`, which on the mail path is the
+        alias user's company — the SAME one for every vendor. With two charts of
+        accounts that means Beta's bills posted in the US deployment's books, and
+        NOTHING complains: the wrong company's accounts resolve perfectly well.
+
+        The answer is one alias per company carrying `alias_defaults`, which
+        reaches `message_new` as `custom_values`. This asserts that path works,
+        because `docs/SETUP.md` now tells the administrator to rely on it.
         """
         companies = self.env["res.company"].search([], limit=2)
         if len(companies) < 2:
@@ -720,7 +816,12 @@ class TestInboundLimits(TransactionCase):
         )
 
     def test_the_landing_company_is_stated_on_the_record(self):
-        """The import record states which company it landed in."""
+        """🔴 The failure has no error, so it must have a statement.
+
+        A bill in the wrong company resolves accounts, posts, and complains
+        about nothing. So which books it landed in is written on the record as
+        a fact, rather than left to be discovered at reconciliation.
+        """
         with patch.object(
             type(self.Import), "with_delay", return_value=MagicMock()
         ):
@@ -734,7 +835,8 @@ class TestInboundLimits(TransactionCase):
         self.assertIn("as set by the alias", body)
 
     def test_a_fallback_company_is_marked_as_a_fallback(self):
-        """A fallback company is marked as such on the record."""
+        """And the configuration that misfiles silently says so on the record,
+        not only in a log nobody reads."""
         with patch.object(
             type(self.Import), "with_delay", return_value=MagicMock()
         ):
@@ -747,10 +849,10 @@ class TestInboundLimits(TransactionCase):
         self.assertIn("names no company", body)
 
     def test_without_an_alias_company_it_falls_back_and_says_so(self):
-        """Without an alias company, `env.company` is used and a warning is
-        logged."""
+        """The fallback is the old behaviour, but it must be discoverable — a
+        single-alias setup is the configuration that silently misfiles."""
         with self.assertLogs(
-            "odoo.addons.goodahead_invoice_ai_import.models.ai_invoice_import",
+            "odoo.addons.goodahead_invoice_import.models.goodahead_invoice_import",
             level="WARNING",
         ) as logs:
             with patch.object(
@@ -767,7 +869,8 @@ class TestInboundLimits(TransactionCase):
         )
 
     def test_what_was_refused_is_said_on_the_record(self):
-        """Refused attachments are named on the record."""
+        """Silently dropping an attachment is how a bill goes missing without
+        anybody knowing there was one."""
         self.env["ir.config_parameter"].sudo().set_param(
             "goodahead_invoice_ai_import.max_pdf_bytes", "100"
         )

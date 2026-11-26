@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-07: the migration tool of one company is not reachable from another. -->
+    <record id="goodahead_apix_migration_company_rule" model="ir.rule">
+        <field name="name">APIX migration tool: own companies only</field>
+        <field name="model_id" ref="model_goodahead_apix_migration"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+</odoo>

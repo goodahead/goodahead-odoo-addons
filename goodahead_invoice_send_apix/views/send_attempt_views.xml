@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-02: one delivery history entry — read-only for everyone.
+         "Accepted by APIX" is the confirmed sent state; no delivered state is
+         shown unless APIX reports one. -->
+    <record id="goodahead_invoice_send_attempt_view_list" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.attempt.list</field>
+        <field name="model">goodahead.invoice.send.attempt</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0"
+                  decoration-danger="state in ('refused', 'failed')"
+                  decoration-muted="state in ('cancelled', 'downloaded')">
+                <field name="display_date"/>
+                <field name="move_id"/>
+                <field name="company_id" groups="base.group_multi_company" optional="show"/>
+                <field name="started_by_label"/>
+                <field name="channel"/>
+                <field name="state" widget="badge"
+                       decoration-success="state in ('accepted', 'sent')"
+                       decoration-danger="state in ('refused', 'failed')"
+                       decoration-warning="state in ('queued', 'running')"/>
+                <field name="counts_as_sent" string="Sent"/>
+                <field name="reason"/>
+                <field name="apix_batch_id" optional="show"/>
+                <field name="apix_document_id" optional="hide"/>
+                <field name="apix_credits" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="goodahead_invoice_send_attempt_view_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.attempt.form</field>
+        <field name="model">goodahead.invoice.send.attempt</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <header>
+                    <button name="action_cancel" type="object" string="Cancel send"
+                            invisible="state != 'queued'"/>
+                    <button name="action_open_technical" type="object" string="Technical"
+                            groups="base.group_no_one"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="queued,running,accepted"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="move_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="channel"/>
+                            <field name="origin"/>
+                            <field name="started_by_label"/>
+                        </group>
+                        <group>
+                            <field name="queued_date"/>
+                            <field name="start_date"/>
+                            <field name="end_date"/>
+                            <field name="counts_as_sent"/>
+                            <field name="cancelled_by_id" invisible="not cancelled_by_id"/>
+                            <field name="late_for_attempt_id" invisible="not late_for_attempt_id"/>
+                        </group>
+                    </group>
+                    <group string="Outcome">
+                        <field name="reason"/>
+                        <field name="warning_text"/>
+                        <field name="units_without_code" invisible="not units_without_code"/>
+                    </group>
+                    <group string="APIX" invisible="channel not in ('einvoice', 'letter')">
+                        <field name="apix_status_code"/>
+                        <field name="apix_batch_id"/>
+                        <field name="apix_document_id"/>
+                        <field name="apix_credits"/>
+                    </group>
+                    <group string="Handled" invisible="not handled_by_id">
+                        <field name="handled_by_id"/>
+                        <field name="handled_date"/>
+                        <field name="handled_reason"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- SCR-13: the developer view. A view of its own, opened only in
+         developer mode (action_open_technical): the developer fields can
+         only be read in developer mode, so the ordinary form never names
+         them. -->
+    <record id="goodahead_invoice_send_attempt_view_form_technical" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.attempt.form.technical</field>
+        <field name="model">goodahead.invoice.send.attempt</field>
+        <field name="inherit_id" ref="goodahead_invoice_send_attempt_view_form"/>
+        <field name="mode">primary</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <!-- SCR-13: developer mode only. The page
+                     carries the developer group of its fields, so the
+                     elements that test them (invisible) are never shown
+                     where the fields cannot be read. -->
+                <notebook>
+                    <page string="Technical" name="technical" groups="base.group_no_one">
+                        <div class="text-muted mb-2" invisible="message_attachment_id">
+                            No message was built for this attempt.
+                        </div>
+                        <group>
+                            <group>
+                                <field name="message_attachment_id" invisible="1"/>
+                                <field name="package_attachment_id" invisible="1"/>
+                                <field name="message_filename" invisible="1"/>
+                                <field name="package_filename" invisible="1"/>
+                                <field name="message_file" filename="message_filename"
+                                       invisible="not message_attachment_id"/>
+                                <field name="package_file" filename="package_filename"
+                                       invisible="not package_attachment_id"/>
+                                <field name="schema_result" widget="badge"
+                                       decoration-success="schema_result == 'valid'"
+                                       decoration-danger="schema_result == 'invalid'"/>
+                                <field name="units_without_code"/>
+                            </group>
+                            <group>
+                                <field name="queue_job_id"
+                                       groups="queue_job.group_queue_job_manager"/>
+                                <field name="queue_job_label"/>
+                                <field name="run_uuid"/>
+                            </group>
+                        </group>
+                        <group string="Schema problems" invisible="not schema_errors">
+                            <field name="schema_errors" nolabel="1" colspan="2"
+                                   class="font-monospace text-break"/>
+                        </group>
+                        <group string="APIX exchange (credentials and digests masked)"
+                               invisible="not exchange_log">
+                            <field name="exchange_log" nolabel="1" colspan="2"
+                                   class="font-monospace text-break"/>
+                        </group>
+                    </page>
+                </notebook>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

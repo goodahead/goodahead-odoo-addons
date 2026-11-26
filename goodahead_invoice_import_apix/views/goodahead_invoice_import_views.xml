@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!--
+        What APIX adds to the inbox and the import record,
+        Receiving T14. 🔴 The storage key is never shown: it is the package's
+        download secret (admin-only field, not in any view).
+    -->
+    <record id="view_goodahead_invoice_import_tree_apix" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.tree.apix</field>
+        <field name="model">goodahead.invoice.import</field>
+        <field name="inherit_id" ref="goodahead_invoice_import.view_ai_invoice_import_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list" position="inside">
+                <!-- SCR-09: the Administrator to-dos, one click from the inbox. -->
+                <header>
+                    <button name="action_open_apix_todos" type="object" string="APIX to-dos"
+                            display="always" groups="account.group_account_manager"/>
+                </header>
+            </xpath>
+            <field name="display_state" position="after">
+                <!-- Shadow results: shown with the "Shadow results"
+                     filter (or a context that asks for it), instead of the bill. -->
+                <field name="shadow_outcome"
+                       column_invisible="not context.get('apix_shadow_results')"/>
+                <field name="shadow_vendor_id"
+                       column_invisible="not context.get('apix_shadow_results')"/>
+                <field name="shadow_vendor_match"
+                       column_invisible="not context.get('apix_shadow_results')"/>
+                <field name="shadow_reason"
+                       column_invisible="not context.get('apix_shadow_results')"/>
+            </field>
+            <field name="move_id" position="attributes">
+                <attribute name="column_invisible">context.get('apix_shadow_results')</attribute>
+            </field>
+            <field name="invoice_date" position="after">
+                <field name="apix_status" optional="hide"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_goodahead_invoice_import_search_apix" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.search.apix</field>
+        <field name="model">goodahead.invoice.import</field>
+        <field name="inherit_id" ref="goodahead_invoice_import.view_ai_invoice_import_search"/>
+        <field name="arch" type="xml">
+            <filter name="source_email" position="after">
+                <filter name="source_apix" string="APIX"
+                        domain="[('source', '=', 'apix')]"/>
+                <separator/>
+                <filter name="shadow_results" string="Shadow results"
+                        domain="[('shadow_outcome', '!=', False)]"
+                        context="{'apix_shadow_results': 1}"/>
+                <!-- AC-11b: unsettled packages within 7 days of leaving the
+                     APIX listing (current + previous calendar month), the
+                     same arithmetic as lib/apix_window.py: document date
+                     before the first day of the month before the month of
+                     today + 7 days. -->
+                <filter name="apix_ageing" string="Ageing out of APIX"
+                        domain="[('source', '=', 'apix'),
+                                 ('state', 'in', ('waiting', 'failed', 'duplicate', 'possibly_lost')),
+                                 ('apix_document_date', '&lt;', (context_today() + relativedelta(days=7) + relativedelta(day=1, months=-1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="apix_mark_unconfirmed" string="Mark unconfirmed"
+                        domain="[('source', '=', 'apix'),
+                                 ('apix_storage_id', '!=', False),
+                                 ('apix_mark_confirmed', '=', False),
+                                 '|', ('state', 'in', ('imported', 'closed')), ('move_id', '!=', False)]"/>
+            </filter>
+            <field name="invoice_number" position="after">
+                <field name="apix_storage_id"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_goodahead_invoice_import_form_apix" model="ir.ui.view">
+        <field name="name">goodahead.invoice.import.form.apix</field>
+        <field name="model">goodahead.invoice.import</field>
+        <field name="inherit_id" ref="goodahead_invoice_import.view_ai_invoice_import_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='banner_processing_stale']" position="after">
+                <!-- ADR-0005: settled here, not yet confirmed at APIX. -->
+                <div name="banner_apix_mark_unconfirmed" class="alert alert-info mb-0" role="status"
+                     groups="account.group_account_manager"
+                     invisible="source != 'apix' or not apix_storage_id or apix_mark_confirmed or (state not in ('imported', 'closed') and not move_id)">
+                    APIX not yet confirmed as received.
+                </div>
+            </xpath>
+            <field name="pdf_attachment_id" position="after">
+                <field name="apix_mark_confirmed" invisible="1"/>
+                <field name="apix_storage_id" invisible="source != 'apix'"/>
+                <field name="apix_status" invisible="source != 'apix'"/>
+                <field name="apix_document_date" invisible="source != 'apix'"/>
+                <field name="shadow_outcome" invisible="not shadow_outcome"/>
+                <field name="shadow_vendor_id" invisible="not shadow_outcome"/>
+                <field name="shadow_vendor_match" invisible="not shadow_outcome"/>
+                <field name="shadow_reason" invisible="not shadow_reason"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- sad.md §7: APIX jobs run on their own channel, so AI backlogs never
+         delay e-invoices. The channel `root.apix` belongs to goodahead_apix
+         since its 19.0.1.4.0 (shared with sending, send ADR-0001). -->
+
+    <!-- apix.run.requested.v1 -->
+    <record id="job_function_apix_run" model="queue.job.function">
+        <field name="model_id" ref="goodahead_apix.model_goodahead_apix_connection"/>
+        <field name="method">_apix_run</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+    </record>
+
+    <!-- apix.package.import.requested.v1: 3 tries (max_retries on the job),
+         backoff 1 min, then 5 min; the last try records an interrupted
+         failure that the next run enqueues again. -->
+    <record id="job_function_apix_import_package" model="queue.job.function">
+        <field name="model_id" ref="goodahead_invoice_import.model_goodahead_invoice_import"/>
+        <field name="method">_apix_import_package</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+        <field name="retry_pattern" eval="{1: 60, 2: 300}"/>
+    </record>
+
+    <!-- apix.package.mark_received.requested.v1: 5 tries (max_retries on the
+         job), exponential backoff 1, 4, 16, 64 min; the last try leaves the
+         record unconfirmed for the daily reconciliation. -->
+    <record id="job_function_apix_mark_received" model="queue.job.function">
+        <field name="model_id" ref="goodahead_invoice_import.model_goodahead_invoice_import"/>
+        <field name="method">_apix_mark_received</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+        <field name="retry_pattern" eval="{1: 60, 2: 240, 3: 960, 4: 3840}"/>
+    </record>
+
+    <!-- Migration: the shadow classification and the live
+         recognition of received packages. 3 tries like the package import;
+         the shadow job's last try leaves the outcome unset for the next run,
+         the recognition's leaves the record possibly lost. -->
+    <record id="job_function_apix_shadow_classify" model="queue.job.function">
+        <field name="model_id" ref="goodahead_invoice_import.model_goodahead_invoice_import"/>
+        <field name="method">_apix_shadow_classify</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+        <field name="retry_pattern" eval="{1: 60, 2: 300}"/>
+    </record>
+
+    <record id="job_function_apix_recognise_received" model="queue.job.function">
+        <field name="model_id" ref="goodahead_invoice_import.model_goodahead_invoice_import"/>
+        <field name="method">_apix_recognise_received</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+        <field name="retry_pattern" eval="{1: 60, 2: 300}"/>
+    </record>
+
+    <!-- apix.daily_checks.requested.v1: no retry, the next day retries. -->
+    <record id="job_function_apix_daily_checks" model="queue.job.function">
+        <field name="model_id" ref="goodahead_apix.model_goodahead_apix_connection"/>
+        <field name="method">_apix_daily_checks</field>
+        <field name="channel_id" ref="goodahead_apix.channel_apix"/>
+    </record>
+
+</odoo>

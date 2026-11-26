@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!--
+        THE IDENTIFIER ROWS, WHERE A PERSON CAN SEE THEM.
+
+        🔴 THIS EXISTS BECAUSE A DOCSTRING CLAIMED IT ALREADY DID (found in
+        review). The phone re-normalisation migration justified ARCHIVING a
+        row it could not re-derive, rather than deleting it, on the grounds that
+        the row "can be read back by a human" — and there was no view, no action
+        and no menu for `goodahead.partner.identifier` anywhere in the module,
+        so reading one of the 429 archived rows meant SQL. A claim that is
+        load-bearing for a design decision has to be true.
+
+        ⚠️ THAT MIGRATION WAS WITHDRAWN IN 19.0.3.22.0 AND THIS FILE STAYED.
+        Nothing archives a row automatically any more, so the `Archived` filter
+        below now serves a person who archived one by hand. The file is kept for
+        two reasons that do not depend on the migration: this table is a
+        matching key that nobody could inspect without SQL for twelve versions,
+        and removing a shipped view, action and menu leaves their xmlids in
+        every database that has already loaded them.
+
+        ⚠️ IT IS UNDER `base.group_no_one` (Settings ▸ Technical), like every
+        other derived table, and it is NOT on the partner form. A one2many there
+        would apply `active_test` and therefore show everything EXCEPT the
+        archived rows — i.e. it would look like a home for them while hiding
+        exactly the ones this view exists for. The `Archived` filter below is
+        the point of the whole file.
+
+        🔴 READ-ONLY IN THE ARCH, DELIBERATELY. These rows are a derivation the
+        system maintains: `_add_pairs` ADDS and never replaces, and a person
+        hand-editing a matching key would be editing something the next write
+        recreates. Archiving one by hand is the one useful action and that is
+        what the `active` toggle is for.
+    -->
+
+    <record id="view_partner_identifier_list" model="ir.ui.view">
+        <field name="name">goodahead.partner.identifier.list</field>
+        <field name="model">goodahead.partner.identifier</field>
+        <field name="arch" type="xml">
+            <list create="false" edit="false"
+                  decoration-muted="not active"
+                  string="Partner identifiers">
+                <field name="partner_id"/>
+                <field name="kind"/>
+                <field name="value"/>
+                <!-- `source` is free text and it is the whole reason an
+                     archived row is kept rather than deleted: it says where the
+                     value came from and, for a row this module archived, which
+                     version archived it and why. -->
+                <field name="source"/>
+                <field name="active" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_partner_identifier_search" model="ir.ui.view">
+        <field name="name">goodahead.partner.identifier.search</field>
+        <field name="model">goodahead.partner.identifier</field>
+        <field name="arch" type="xml">
+            <search string="Partner identifiers">
+                <field name="value"/>
+                <field name="partner_id"/>
+                <field name="source"/>
+                <filter name="phone" string="Phone"
+                        domain="[('kind', '=', 'phone')]"/>
+                <filter name="domain_kind" string="Domain"
+                        domain="[('kind', '=', 'domain')]"/>
+                <separator/>
+                <!-- 🔴 THE ONE FILTER THIS FILE EXISTS FOR. Without it the
+                     default `active_test` hides every archived row and the
+                     "a human can read it back" claim is false again. -->
+                <filter name="inactive" string="Archived"
+                        domain="[('active', '=', False)]"/>
+                <!-- ⚠️ `<group>` BARE. `expand=` and `string=` on a search
+                     view's group are not in 19.0's RNG and the whole view is
+                     refused with `RELAXNG_ERR_INVALIDATTR` plus two cascading
+                     errors that point at the wrong line (measured on the US bench
+                     bench). Core's own `view_attachment_search` is the shape
+                     to copy. -->
+                <group>
+                    <filter name="group_partner" string="Partner" domain="[]"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_kind" string="Kind" domain="[]"
+                            context="{'group_by': 'kind'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_partner_identifier" model="ir.actions.act_window">
+        <field name="name">Partner Identifiers</field>
+        <field name="res_model">goodahead.partner.identifier</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_partner_identifier_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No identifier rows yet.
+            </p>
+            <p>
+                Every phone number and web domain a partner has been seen under.
+                Rows are added and never replaced, so a vendor keeps every
+                number a bill has ever been reached on. Switch on the
+                <b>Archived</b> filter to see the rows a migration could not
+                re-derive — their Source says which version archived them and
+                why.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_partner_identifier"
+              name="Partner Identifiers"
+              parent="base.menu_custom"
+              action="action_partner_identifier"
+              sequence="105"/>
+</odoo>

@@ -1,13 +1,25 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
 from odoo import fields, models
 
 
 class ResCompany(models.Model):
     _inherit = "res.company"
 
-    # `claude_api_key` is declared by `goodahead_claude` (system group only);
-    # do not redeclare it here, or the groups would depend on load order.
+    # 🔴 `claude_api_key` is NOT declared here, and must not be.
+    #
+    # `goodahead_claude` already declares it on `res.company` with
+    # `groups="base.group_system"`. The source module declared its own with
+    # `groups="account.group_account_manager"`, and two modules declaring one
+    # field with different `groups=` is NOT an error in Odoo — the later module
+    # in load order simply wins, so which guard applies would have depended on
+    # dependency ordering rather than on anybody's decision. `base.group_system`
+    # was chosen (goodahead_claude's spelling), so the duplicate
+    # declaration is deleted rather than reconciled.
+    #
+    # Anything here needing the key reads `company.sudo().claude_api_key`, or
+    # better, lets `goodahead.claude.client` read it.
 
     claude_invoice_model_id = fields.Many2one(
         "goodahead.claude.model",

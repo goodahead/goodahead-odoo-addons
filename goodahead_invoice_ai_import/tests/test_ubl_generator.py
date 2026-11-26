@@ -1,13 +1,14 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""UBL generation from the extracted invoice JSON."""
+"""UBL generation: a discounted line must emit the NET unit price so Odoo's
+importer doesn't add a bogus 'Rounding' line and tax the gross amount."""
 
 from lxml import etree
 
 from odoo.tests import TransactionCase, tagged
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     UBLGenerationError,
     generate_peppol_invoice_xml,
 )
@@ -21,9 +22,9 @@ class TestUblGenerator(TransactionCase):
             "invoice_number": "T-1",
             "issue_date": "2026-08-06",
             "currency": "EUR",
-            "seller": {"name": "NORDIC DEMO SUPPLIER OY", "vat": "FI10000001",
+            "seller": {"name": "ZZ Seller Oy", "vat": "FI00000078",
                        "country_code": "FI"},
-            "buyer": {"name": "NORDIC DEMO OY", "vat": "FI20000002", "country_code": "FI"},
+            "buyer": {"name": "ZZ Buyer Oy", "vat": "FI00000123", "country_code": "FI"},
             "lines": [{"name": "Widget", "quantity": qty, "unit_code": "C62",
                        "price_unit": price_unit, "line_total": line_total,
                        "tax_percent": 25.5, "tax_amount": 0.0,
@@ -35,14 +36,33 @@ class TestUblGenerator(TransactionCase):
         }
 
     def test_the_generated_xml_is_classified_bis3_on_whichever_core_this_is(self):
-        """Core classifies the generated XML as `account.edi.xml.ubl_bis3` on both cores.
+        """🔴 A REVIEW FINDING — VERIFIED RATHER THAN ARGUED, AND IT IS
+        THE ONLY DOOR BETWEEN STEPS 4/6 AND A LIVE US DEPLOYMENT.
 
-        On the search-plan core that routes the document through `_ubl_import_invoice`,
-        which never calls `_import_partner` or `_import_lines`. The generator emits no
-        `UBLVersionID`, which the cores check in different orders. Control: an NLCIUS
-        CustomizationID classifies as something else.
+        `account.move._ai_decode_ubl_into_move` sets `import_file_type` from
+        core's own `_get_import_file_type` and the whole US-deployment analysis
+        rests on the answer being `account.edi.xml.ubl_bis3`: on the search-plan
+        core that classification routes the document through
+        `_ubl_import_invoice`, whose body calls NEITHER
+        `account.edi.common._import_partner` NOR `_import_lines`, so the create
+        suppression and the product narrowing are inert there. If a generated
+        XML were ever classified UBL 2.0 or Factur-X instead, both would fire on
+        the US deployment — a behaviour change no step claims.
+
+        *(read, both cores)* it cannot, and the reason is worth pinning rather
+        than restating. `ca1f0aea` tests `UBLVersionID` BEFORE `CustomizationID`
+        and `189df353` tests it after, so the two orders differ — but this
+        generator emits no `UBLVersionID` at all, its root is `Invoice-2` /
+        `CreditNote-2` rather than `CrossIndustryInvoice`, and its
+        `CUSTOMIZATION_ID` constant is character-for-character the BIS 3.0
+        branch on both. The classification is therefore a constant, and a
+        constant is a thing a test holds still.
+
+        CONTROL: the same bytes with the CustomizationID edited to the NLCIUS
+        one classify as something else, so a check that answered `ubl_bis3` for
+        any input could not pass this.
         """
-        xml = generate_peppol_invoice_xml(self._data(38.69, 20.95))
+        xml = generate_peppol_invoice_xml(self._data(44.95, 24.73))
         move = self.env["account.move"]
 
         def classify(raw):
@@ -80,10 +100,10 @@ class TestUblGenerator(TransactionCase):
         )
 
     def test_discounted_line_emits_net_unit_price(self):
-        # list 38.69, net 20.95 (discount) -> PriceAmount must be the net 20.95
-        xml = generate_peppol_invoice_xml(self._data(38.69, 20.95)).decode()
-        self.assertIn("20.95", xml)
-        self.assertNotIn("38.69", xml, "gross list price must not be emitted")
+        # list 44.95, net 24.73 (discount) -> PriceAmount must be the net 24.73
+        xml = generate_peppol_invoice_xml(self._data(44.95, 24.73)).decode()
+        self.assertIn("24.73", xml)
+        self.assertNotIn("44.95", xml, "gross list price must not be emitted")
 
     def test_multi_qty_net_unit_price(self):
         # qty 4, net line 100.00 -> unit price 25.00
@@ -92,10 +112,14 @@ class TestUblGenerator(TransactionCase):
         self.assertNotIn("30.0", xml)
 
     def test_the_currency_code_is_normalised_before_it_is_emitted(self):
-        """Core matches `res.currency.name` exactly.
+        """Core matches `res.currency.name` EXACTLY.
 
-        A lower-case or padded code matches nothing in `_import_currency`, which
-        then silently substitutes the company currency.
+        A lower-case "cny" or a stray space matches nothing in
+        `_import_currency`, which then substitutes the COMPANY currency — USD
+        here — with only a log line. That is the wrong-value failure this
+        change exists to stop, arriving one layer below the prompt. The value
+        also comes out of Claude's JSON, so `str()` is there for the same
+        reason it is in `peppol_endpoint_for_party`.
         """
         for printed in ("cny", " CNY ", "Cny"):
             with self.subTest(printed=printed):
@@ -114,17 +138,28 @@ class TestUblGenerator(TransactionCase):
                 self.assertEqual([a.get("currencyID") for a in amounts], ["CNY"])
 
     def test_note_emitted_once(self):
-        # The note must not be written to both Note and PaymentTerms/Note.
+        # The invoice note must appear exactly once (was duplicated in both the
+        # document Note and PaymentTerms/Note -> doubled on the imported bill).
         data = self._data(10.0, 10.0)
-        data["note"] = "Viivastyskorko 16 %. Huomautusaika 7 pv."
+        data["note"] = "Viivastyskorko 11,5 %. Huomautusaika 14 pv."
         xml = generate_peppol_invoice_xml(data).decode()
         self.assertEqual(xml.count(data["note"]), 1, "note must not be duplicated")
 
     # ------------------------------------------------------------------
-    # Nullable fields fall back to their defaults
+    # 🔴 `.get(key, default)` DOES NOT DEFAULT A NULL
     #
-    # `dict.get(key, default)` does not default a key present with value null,
-    # and the prompt schema allows null for these fields.
+    # Three fields were read as `container.get(key, "a default")`, and all three
+    # are documented in the prompt's schema as things the model may answer null
+    # to. `dict.get`'s second argument applies when the key is ABSENT; a key
+    # PRESENT WITH VALUE NULL returns None and sails past it. So a perfectly
+    # compliant extraction produced `<cbc:PaymentMeansCode>None</cbc:Payment
+    # MeansCode>`, an empty tax-category id, or — for `unit_code` — a TypeError
+    # out of lxml that took the whole import down with a message about argument
+    # types.
+    #
+    # ⚠️ These were MEASURED against the previous revision before being fixed,
+    # not read. The `unit_code` one in particular behaved differently from the
+    # other two, and reading would not have told anyone that.
     # ------------------------------------------------------------------
 
     def _with(self, **line_overrides):
@@ -143,13 +178,17 @@ class TestUblGenerator(TransactionCase):
         self.assertNotIn("None", xml)
 
     def test_the_payment_means_block_is_reached_at_all(self):
-        """Control: `PaymentMeans` is emitted at all for this fixture."""
+        """The control for the test above. `PaymentMeans` is only emitted when
+        there is an account or a payment reference, so without this an assertion
+        about its content could pass against an XML that has no such element."""
         xml = generate_peppol_invoice_xml(self._with()).decode()
 
         self.assertIn("<cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>", xml)
 
     def test_a_null_unit_code_does_not_abort_the_import(self):
-        """lxml's `set()` rejects None, so a null unit code must be defaulted."""
+        """lxml's `set()` rejects None outright, so this one was loud — but
+        loud about the wrong thing: `Argument must be bytes or unicode, got
+        'NoneType'` names no field and no document."""
         xml = generate_peppol_invoice_xml(self._with(unit_code=None)).decode()
 
         self.assertIn('unitCode="C62"', xml)
@@ -165,10 +204,18 @@ class TestUblGenerator(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_a_null_amount_is_a_named_failure_and_not_a_zero(self):
-        """A null amount raises a named error instead of becoming 0.00.
+        """🔴 `_fmt_decimal(None)` returned "0.00".
 
-        Checked here as well as in the validator because the re-import path
-        replays a hand-edited extraction without re-validating it.
+        So a null `line_total`, `tax_amount`, `taxable_amount` or `totals` entry
+        passed validation, passed generation, built a bill, and was wrong with
+        nothing to see — which inverts the whole null-rather-than-guess
+        principle, whose justification is that a missing value is VISIBLE.
+
+        ⚠️ This lives here as well as in the validator because the validator
+        cannot reach the RE-IMPORT path: `action_reimport_from_json` replays a
+        stored, hand-edited extraction straight into this module without
+        re-validating it, so a human who deletes a figure while fixing another
+        one was being handed a silent zero.
         """
         cases = {
             "line 1: line_total": lambda d: d["lines"][0].update(line_total=None),
@@ -190,15 +237,18 @@ class TestUblGenerator(TransactionCase):
                 self.assertIn(label, str(caught.exception))
 
     def test_a_complete_document_still_generates(self):
-        """Control for the test above."""
+        """The control for the block above: a validator that rejected every
+        document would pass all five cases and break every import."""
         xml = generate_peppol_invoice_xml(self._data(10.0, 10.0)).decode()
 
         self.assertIn("<cbc:PayableAmount", xml)
 
     def test_a_null_line_tax_omits_the_line_tax_total_and_writes_no_zero(self):
-        """A document without per-line tax omits the line TaxTotal instead of writing 0.00.
+        """19.0.3.29.0: a document that prints one tax total and none per line.
 
-        The line rate and the document subtotal, which Odoo's decoder reads, remain.
+        The line's TaxTotal is left out rather than written as 0.00. The
+        line's rate and the document's subtotal are still there, and they are
+        what Odoo's decoder reads.
         """
         ns = {
             "cac": "urn:oasis:names:specification:ubl:schema:xsd:"
@@ -224,7 +274,8 @@ class TestUblGenerator(TransactionCase):
         self.assertIsNotNone(full.find("cac:InvoiceLine/cac:TaxTotal", ns))
 
     def test_a_boolean_amount_is_a_named_failure_and_not_one(self):
-        """`float(True)` is 1.0, so a boolean amount must raise instead."""
+        """`float(True)` is 1.0. A hand-edited `true` on a re-import must stop
+        the import, not become a $1.00 bill."""
         data = self._data(10.0, 10.0)
         data["totals"]["payable"] = True
 
@@ -234,7 +285,8 @@ class TestUblGenerator(TransactionCase):
         self.assertIn("totals.payable", str(caught.exception))
 
     def test_a_boolean_on_a_negative_credit_note_is_not_flipped_into_an_amount(self):
-        """The credit-note sign normaliser must not turn `True` into -1 first."""
+        """The sign normaliser runs first on a credit note printed negative;
+        it must not turn `True` into -1 before the check above sees it."""
         data = self._data(10.0, 10.0)
         data["type"] = "CreditNote"
         line = data["lines"][0]

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-06: the mass sending wizard. `review`: rows per company and
+         category, Fix / Include, both send choices (the background primary
+         when recommended). `sending`: the live status widget with Fix and
+         Retry per failed row; closing changes nothing. -->
+    <record id="goodahead_invoice_send_wizard_view_form" model="ir.ui.view">
+        <field name="name">goodahead.invoice.send.wizard.form</field>
+        <field name="model">goodahead.invoice.send.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Send e-invoices">
+                <field name="state" invisible="1"/>
+                <div class="alert alert-danger" role="alert" invisible="not copy_warning">
+                    <field name="copy_warning" readonly="1" class="text-break"/>
+                </div>
+                <div class="alert alert-info" role="alert"
+                     invisible="state != 'review' or can_send">
+                    No invoice in this selection can be sent now.
+                </div>
+                <div class="alert alert-info" role="alert"
+                     invisible="state != 'review' or not recommend_background">
+                    Sending in the background is recommended for
+                    <field name="included_count" class="oe_inline" readonly="1"/> invoices.
+                </div>
+                <!-- sending: the live status per invoice, polled every second
+                     -->
+                <field name="run_uuid" widget="apix_send_run_status" nolabel="1"
+                       invisible="state != 'sending'"/>
+                <field name="line_ids" nolabel="1" readonly="state != 'review'"
+                       invisible="state == 'sending'">
+                    <list create="0" delete="0" editable="bottom"
+                          decoration-muted="not include"
+                          decoration-warning="category in ('not_ready', 'already_sent', 'in_progress')">
+                        <field name="company_id" groups="base.group_multi_company" readonly="1"/>
+                        <field name="move_id" readonly="1"/>
+                        <field name="partner_id" readonly="1"/>
+                        <field name="channel" readonly="1"/>
+                        <field name="amount_total" readonly="1" optional="show"/>
+                        <field name="currency_id" column_invisible="1"/>
+                        <field name="category" widget="badge" readonly="1"
+                               decoration-success="category == 'ready'"
+                               decoration-warning="category in ('not_ready', 'already_sent', 'in_progress')"
+                               decoration-muted="category in ('sending_off', 'skipped', 'not_posted')"/>
+                        <field name="missing" readonly="1"/>
+                        <field name="sent_info" readonly="1"/>
+                        <!-- an already-sent line is included only through "Include",
+                             after its warning; once included it can be left
+                             out again -->
+                        <field name="include" widget="boolean_toggle"
+                               readonly="category != 'ready' and not (category == 'already_sent' and include)"/>
+                        <field name="attempt_id" readonly="1" optional="hide"/>
+                        <button name="action_open_fix" type="object" string="Fix"
+                                class="btn-link" invisible="category != 'not_ready'"/>
+                        <button name="action_include" type="object" string="Include"
+                                class="btn-link"
+                                invisible="category != 'already_sent' or include"
+                                confirm="This invoice was already sent — including it may deliver it twice."/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="action_send_now" type="object" string="Send now"
+                            class="btn-primary" data-hotkey="q"
+                            invisible="state != 'review' or not can_send or recommend_background"/>
+                    <button name="action_send_now" type="object" string="Send now"
+                            invisible="state != 'review' or not can_send or not recommend_background"/>
+                    <button name="action_send_background" type="object" string="Send in background"
+                            class="btn-primary"
+                            invisible="state != 'review' or not can_send or not recommend_background"/>
+                    <button name="action_send_background" type="object" string="Send in background"
+                            invisible="state != 'review' or not can_send or recommend_background"/>
+                    <button name="action_include_already_sent" type="object"
+                            string="Include all already sent"
+                            invisible="state != 'review' or not has_already_sent"
+                            confirm="These invoices were already sent — including them may deliver them twice."/>
+                    <button special="cancel" string="Cancel" data-hotkey="x"
+                            invisible="state != 'review'"/>
+                    <button special="cancel" string="Close — continue in background"
+                            class="btn-primary" invisible="state != 'sending'"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- SCR-05: "Send e-invoices…" in the invoice list's action menu. -->
+    <record id="goodahead_invoice_send_wizard_action" model="ir.actions.act_window">
+        <field name="name">Send e-invoices…</field>
+        <field name="res_model">goodahead.invoice.send.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="account.model_account_move"/>
+        <field name="binding_view_types">list</field>
+        <field name="group_ids" eval="[(4, ref('account.group_account_invoice'))]"/>
+    </record>
+
+</odoo>

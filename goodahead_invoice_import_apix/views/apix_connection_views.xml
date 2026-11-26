@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+
+    <!-- SCR-05 "working": receiving state off / shadow / live and Fetch now. -->
+    <record id="goodahead_apix_connection_view_form_receiving" model="ir.ui.view">
+        <field name="name">goodahead.apix.connection.form.receiving</field>
+        <field name="model">goodahead.apix.connection</field>
+        <field name="inherit_id" ref="goodahead_apix.goodahead_apix_connection_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_open_fetch_credentials']" position="after">
+                <button name="action_fetch_now" type="object" string="Fetch now"
+                        groups="account.group_account_manager"
+                        invisible="status != 'working' or receiving_state == 'off'"/>
+                <button name="action_start_mirror" type="object" string="Start mirror"
+                        groups="account.group_account_manager"
+                        invisible="receiving_state not in ('off', 'shadow')"
+                        confirm="Mirror mode is for a test or staging copy next to production: every package APIX lists, received ones too, becomes a draft bill here, and nothing is ever marked received at APIX. Start it?"/>
+                <button name="action_stop_mirror" type="object" string="Stop mirror"
+                        groups="account.group_account_manager"
+                        invisible="receiving_state != 'mirror'"/>
+            </xpath>
+            <xpath expr="//sheet/group" position="before">
+                <div class="alert alert-warning" role="alert" invisible="receiving_state != 'mirror'">
+                    <strong>Mirror mode.</strong> Every package APIX lists, received ones too,
+                    becomes a draft bill in this database, and nothing is marked received at
+                    APIX. Use it only on a test or staging copy: the production database keeps
+                    receiving these invoices.
+                </div>
+            </xpath>
+            <xpath expr="//sheet/group" position="after">
+                <group>
+                    <group string="Receiving" name="receiving">
+                        <field name="receiving_via_migration" invisible="1"/>
+                        <field name="receiving_state" widget="radio" options="{'horizontal': true}"
+                               readonly="receiving_via_migration"/>
+                        <div colspan="2" class="text-muted" invisible="not receiving_via_migration">
+                            Switch to live and back with the Migration tool: it pauses and
+                            resumes the earlier APIX connector for this company.
+                        </div>
+                        <field name="receiving_state_since"/>
+                    </group>
+                    <group string="Last run">
+                        <field name="last_run_date"/>
+                        <field name="last_run_state" widget="badge"
+                               decoration-success="last_run_state == 'success'"
+                               decoration-danger="last_run_state == 'failed'"/>
+                        <field name="last_run_message"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="goodahead_apix_connection_view_list_receiving" model="ir.ui.view">
+        <field name="name">goodahead.apix.connection.list.receiving</field>
+        <field name="model">goodahead.apix.connection</field>
+        <field name="inherit_id" ref="goodahead_apix.goodahead_apix_connection_view_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='status']" position="after">
+                <field name="receiving_state"/>
+                <field name="last_run_date" optional="show"/>
+                <field name="last_run_state" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

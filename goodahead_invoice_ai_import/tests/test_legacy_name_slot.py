@@ -1,33 +1,53 @@
 # Copyright 2026 Goodahead Oy
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-"""The legacy adapter: `res.partner._retrieve_partner_with_name`.
+"""The legacy adapter: `res.partner._retrieve_partner_with_name` (the dual-core design).
 
-On older 19.0 builds `res.partner._retrieve_partner` runs VAT, domain,
-phone/mail and finally `_retrieve_partner_with_name`, each company-scoped and
-then with ``company_id = False``. On the search-plan build the same method is a
-deprecated stub with no core callers, so the override is live on one build and
-inert on the other.
+🔴 WHAT THIS FILE IS FOR. Until now this module had NO live hook on the older
+19.0 core. `_ai_find_vendor` is defined there and callable there, and nothing
+called it: four of the five EDI overrides are `_import_ubl_*` steps that core
+never runs, and `_retrieve_partner` was deliberately left alone. Installed,
+green, never run — the silent no-op the dual-core design exists to prevent. This is the hook.
 
-Only the business id, phone and domain rules are composed at this slot, the
-same three the search-plan adapter inserts. Core has already run its own VAT
-step, and the name match at this slot is core's.
+WHERE IT SITS, AND WHY THAT IS THE WHOLE DESIGN. On the legacy core
+`res.partner._retrieve_partner` (`account/models/partner.py:958`) runs
+``search_with_vat -> search_with_domain -> search_with_phone_mail ->
+search_with_name``, each twice (company-scoped, then ``company_id = False``), and
+`:976` calls `_retrieve_partner_with_name` as the LAST live step. On the
+search-plan core the same method is a deprecated stub with zero core callers. So
+one override is live on one build and inert on the other, by core's own doing
+rather than by a flag of ours. Both halves are asserted here.
 
-Fake ``ZZ…`` names, numbers and domains throughout.
+🔴 WHAT IS COMPOSED AT THAT SLOT IS NOT THE WHOLE MATCHER, AND THAT IS THE
+POINT OF HALF THESE TESTS. `_ai_find_vendor` also carries a VAT rule and a NAME
+rule. Core owns both at this position — it has already run its own VAT step
+twice by the time the name slot is reached, and the name match at this slot IS
+core's. Composing the whole matcher here would put a case-insensitive VAT retry
+and our own (`parent_id = False`, `supplier_rank`-ordered) name rule ahead of
+core's name step, which changes which vendor a bill is filed against. The
+adapter therefore runs exactly the three rules the search-plan adapter inserts
+at the same relative position: business id, phone, email/website domain.
+
+Fake ``ZZ…`` names, numbers and domains throughout, so a DB-touching assertion
+can never collide with a vendor already in the database.
 """
 
 from unittest.mock import patch
 
 from odoo.tests import TransactionCase, tagged
 
-# Core's class, imported directly so a control can call core's implementation
-# while this module is installed.
+# Core's own class, imported so a control can call core's implementation
+# directly. Importing the CLASS (not going through the registry) is what makes
+# it possible to ask "what would core alone have done?" from inside a tree where
+# this module is installed — the same trick `test_product_matching.py` uses.
+# ⚠️ The class is named `ResPartner` in `account/models/partner.py` on BOTH
+# measured cores, so this import resolves on both; only its body differs.
 from odoo.addons.account.models.partner import ResPartner as CoreResPartner
 
-from odoo.addons.goodahead_invoice_ai_import.lib.ubl_generator import (
+from odoo.addons.goodahead_invoice_import.adapters.ubl_generator import (
     generate_peppol_invoice_xml,
 )
-from odoo.addons.goodahead_invoice_ai_import.models.core_profile import (
+from odoo.addons.goodahead_invoice_import.models.core_profile import (
     PROFILE_LEGACY,
     PROFILE_SEARCH_PLAN,
 )
@@ -41,7 +61,8 @@ from .profiles import (
     skip_unless_profile,
 )
 
-#: Core's second pass, where most vendors (no `company_id`) are found.
+#: Core's second pass — the one almost every vendor is found on, since a vendor
+#: normally carries no `company_id`.
 NO_COMPANY = [("company_id", "=", False)]
 
 
@@ -56,8 +77,12 @@ def _explode(*args, **kwargs):
 
 @tagged("post_install", "-at_install")
 class TestTheNameSlotAdapter(TransactionCase):
-    """Direct calls; meaningful on both builds since the method exists on both
-    with the same signature.
+    """Direct calls, on BOTH builds.
+
+    `_retrieve_partner_with_name` exists on both cores with the same signature,
+    so every assertion here is meaningful on either bench — which is what makes
+    the adapter's *rules* testable on the tree it is developed in, while only
+    its *liveness* needs the legacy bench.
     """
 
     @classmethod
@@ -66,13 +91,14 @@ class TestTheNameSlotAdapter(TransactionCase):
         cls.Partner = cls.env["res.partner"]
         cls.us = cls.env.ref("base.us")
 
-        # Reachable by phone and web domain, but not by core's name step.
+        # Reachable by phone and by web domain, and by NOTHING core's name step
+        # could find: the printed name on its invoices is not its ledger name.
         cls.vendor = cls.Partner.create(
             {
                 "name": "ZZ Slot Vendor Holdings",
                 "is_company": True,
                 "supplier_rank": 7,
-                "phone": "+1 718-555-0177",
+                "phone": "+1 212-555-0177",
                 "email": "ap@zzslotvendor.example",
                 "country_id": cls.us.id,
             }
@@ -94,9 +120,9 @@ class TestTheNameSlotAdapter(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_a_vendor_reachable_only_by_phone_is_returned_at_the_name_slot(self):
-        """The same phone in another format finds the vendor even though the
-        printed name differs from the ledger name."""
-        found = self._ai(self._seller(phone="718.555.0177"))._retrieve_partner_with_name(
+        """The common case: the printed phone is the same telephone in a different
+        format, and the printed name is not the ledger name."""
+        found = self._ai(self._seller(phone="212.555.0177"))._retrieve_partner_with_name(
             "ZZ PRINTED NAME NOBODY HAS", NO_COMPANY
         )
         self.assertEqual(found, self.vendor)
@@ -108,7 +134,9 @@ class TestTheNameSlotAdapter(TransactionCase):
         self.assertEqual(found, self.vendor)
 
     def test_core_alone_would_not_have_found_it(self):
-        """Without our context, core's own name step finds nothing."""
+        """🔴 THE CONTROL that makes the two tests above mean something. Without
+        our context the identical call is core's own name step, and it finds
+        nothing — so the match above is ours, not core's."""
         self.assertFalse(
             self.Partner._retrieve_partner_with_name(
                 "ZZ PRINTED NAME NOBODY HAS", NO_COMPANY
@@ -116,10 +144,11 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
 
     def test_someone_else_s_document_is_left_to_core(self):
-        """Without the `ai_invoice_import` context key, other documents (Peppol,
-        Factur-X, other modules) get core's behaviour."""
+        """⚠️ This method is reachable outside our import — a genuine Peppol
+        document, a Factur-X bill, another module. The `ai_invoice_import`
+        context key is what keeps the adapter to our own documents."""
         found = self.Partner.with_context(
-            ai_seller=self._seller(phone="718.555.0177")
+            ai_seller=self._seller(phone="212.555.0177")
         )._retrieve_partner_with_name("ZZ PRINTED NAME NOBODY HAS", NO_COMPANY)
         self.assertFalse(found, "no context key, no adapter")
 
@@ -128,14 +157,18 @@ class TestTheNameSlotAdapter(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_an_extra_domain_that_excludes_our_match_falls_through_to_core(self):
-        """A match that fails the caller's `extra_domain` is not returned."""
-        found = self._ai(self._seller(phone="718.555.0177"))._retrieve_partner_with_name(
+        """🔴 Core calls this twice per import, once company-scoped and once with
+        ``company_id = False``. Returning a partner that fails the caller's own
+        extra_domain would hand `_retrieve_partner` a vendor it had deliberately
+        scoped out."""
+        found = self._ai(self._seller(phone="212.555.0177"))._retrieve_partner_with_name(
             "ZZ PRINTED NAME NOBODY HAS", [("company_id", "!=", False)]
         )
         self.assertFalse(found)
 
     def test_a_seller_that_identifies_nobody_returns_exactly_what_core_returns(self):
-        """When our rules decline, core's answer is returned unchanged."""
+        """When our rules decline, core's answer is what happens — the same
+        object, not an approximation of it."""
         core = self.Partner._retrieve_partner_with_name(
             "ZZ Slot Vendor Holdings", NO_COMPANY
         )
@@ -146,10 +179,17 @@ class TestTheNameSlotAdapter(TransactionCase):
         self.assertEqual(ours, self.vendor, "control: core's own name step does match here")
 
     def test_the_name_step_itself_is_narrowed_to_the_other_build_s_exact_match(self):
-        """The name step uses ``=ilike`` (exact, case-insensitive) on both
-        builds; older builds used a substring ``ilike``.
+        """🔴 THE DUAL-CORE DESIGN, at the unit level and on BOTH builds.
 
-        See `res.partner._ai_retrieve_partner_with_exact_name`.
+        The legacy core spells its name step ``('name', 'ilike', name)`` and
+        the search-plan core spells it ``('name', '=ilike', name)``. One of
+        those files a bill against a partner whose name merely CONTAINS the
+        printed one; the other does not. This module makes the slot it owns say
+        the same thing on both.
+
+        See `res.partner._ai_retrieve_partner_with_exact_name` for why the
+        narrowing is made where the decision is MADE rather than filtered
+        afterwards, and why nothing is lost by it.
         """
         containing = self.Partner.create(
             {"name": "ZZ Narrowed Supplies International", "is_company": True}
@@ -162,7 +202,10 @@ class TestTheNameSlotAdapter(TransactionCase):
         self.assertFalse(
             found, "a name that is only a substring must not decide the bill"
         )
-        # Control on the fixture: a substring rule would find exactly one row.
+        # 🔴 THE CONTROL, and it is about the FIXTURE rather than about core:
+        # a substring rule at this slot would have found exactly one row and
+        # therefore decided. Without it the assertion above would also pass
+        # against an empty database.
         self.assertEqual(
             self.Partner.search(
                 [("name", "ilike", "ZZ Narrowed Supplies")] + NO_COMPANY
@@ -172,12 +215,12 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
 
     # ------------------------------------------------------------------
-    # The other direction of the narrowing
+    # 🔴 The OTHER direction of the narrowing — a review finding
     # ------------------------------------------------------------------
 
     def _near_name_pair(self):
-        """One partner matching the printed name exactly, one it is a prefix
-        of."""
+        """One partner whose name the printed name matches EXACTLY, and one it
+        is a prefix of. The pair the two cores answer differently."""
         exact = self.Partner.create(
             {"name": "ZZ Zeta Test Oy", "is_company": True, "supplier_rank": 3}
         )
@@ -188,7 +231,9 @@ class TestTheNameSlotAdapter(TransactionCase):
                 "supplier_rank": 9,
             }
         )
-        # Control on the fixture: a substring search returns both.
+        # CONTROL ON THE FIXTURE: core's substring spelling really does return
+        # BOTH, so the whole case exists. Without this the tests below would
+        # also pass against a database holding neither partner.
         self.assertEqual(
             self.Partner.search(
                 [("name", "ilike", "ZZ Zeta Test Oy")] + NO_COMPANY
@@ -198,11 +243,19 @@ class TestTheNameSlotAdapter(TransactionCase):
         return exact, longer
 
     def test_the_narrowed_step_decides_a_near_name_pair(self):
-        """An exact name beside a longer one is decided.
+        """🔴 THE DIRECTION THE "NEVER WORSE THAN CORE" PARAGRAPH DID NOT STATE.
 
-        ``=ilike`` matches a subset of ``ilike``, and the caller accepts only
-        ``len(partner) == 1``, so a pair the substring step refused as
-        ambiguous is now decided, as it already is on the search-plan build.
+        ``=ilike`` matches a strict SUBSET of the rows ``ilike`` matches, so the
+        slot can never return a partner the legacy core could not have found.
+        What that sentence left out is that the CALLER reads ``len(partner) ==
+        1`` (`account/models/partner.py:992` at `ca1f0aea`), so a smaller set
+        can be DECIDED where the larger one was refused as ambiguous.
+
+        That is deliberate, and the reason is the one the dual-core design exists for: the
+        question is never *does this differ from core*, it is *do the two builds
+        now answer the same*. *(measured 2026-10-10, both benches)* they did
+        not, and after the narrowing they do — which the two gated controls
+        below assert from each side.
         """
         exact, _longer = self._near_name_pair()
 
@@ -219,10 +272,14 @@ class TestTheNameSlotAdapter(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_LEGACY)
     def test_this_core_refuses_the_near_name_pair_that_ours_decides(self):
-        """Core alone on the legacy build refuses the pair.
+        """🔴 HALF THE DISAGREEMENT, MEASURED ON THE BENCH THAT HAS IT.
 
-        If a future core decides it by itself, this fails and flags the
-        override as no longer needed.
+        Core alone on this build returns BOTH rows from its substring step and
+        `_retrieve_partner` then declines, so the bill arrives with no vendor.
+        That is the behaviour the narrowing replaces, and this test is what
+        stops the narrowing becoming dead code nobody notices: if a future core
+        change makes this core decide the pair by itself, this fails and says
+        so, rather than leaving an override that no longer does anything.
         """
         self._near_name_pair()
 
@@ -234,8 +291,15 @@ class TestTheNameSlotAdapter(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_this_core_already_decides_the_near_name_pair(self):
-        """The search-plan core already picks the exact-name partner (``=ilike``
-        with ``limit=1``), so the legacy slot now gives the same answer.
+        """🔴 THE OTHER HALF, and the reason the narrowing is not a divergence.
+
+        *(measured)* this core's name step is ``('name', '=ilike', name)`` and
+        `_import_retrieve_customer` searches ``limit=1`` with
+        ``order='is_company DESC, supplier_rank DESC, …'``
+        (`account/models/partner.py:1046-1053` at `189df353`) — it does not
+        refuse an ambiguity at all, it picks one. So this build has always filed
+        this bill against the exact-name partner, and the legacy slot now gives
+        the same answer.
         """
         exact, _longer = self._near_name_pair()
 
@@ -246,10 +310,19 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
 
     def test_two_partners_with_the_SAME_exact_name_are_still_refused(self):
-        """Two exact-name matches are still returned unresolved.
+        """🔴 THE RESIDUAL DIVERGENCE, WRITTEN DOWN RATHER THAN DISCOVERED
+        LATER (found in review).
 
-        The search-plan core would pick the higher `supplier_rank`; declining
-        is the safer direction and sends the bill to the candidate cards.
+        With TWO rows matching the printed name EXACTLY the narrowed slot hands
+        both back and `_retrieve_partner`'s ``len == 1`` declines — while the
+        search-plan core, searching ``limit=1`` under its own order, picks the
+        higher `supplier_rank`. The two builds still differ here.
+
+        It is deliberate and it is the safe direction: declining lands the bill
+        in F27's candidate cards, where a person chooses and the choice teaches
+        the matcher, rather than filing it against whichever row sorted first.
+        Nothing composes an order at this slot — that is §4.3(b)'s rule and it
+        still holds.
         """
         low = self.Partner.create(
             {"name": "ZZ Twinned Exactly", "is_company": True, "supplier_rank": 1}
@@ -267,31 +340,50 @@ class TestTheNameSlotAdapter(TransactionCase):
         self.assertIn(high, ours)
 
     def test_an_empty_name_still_returns_core_s_answer(self):
-        """An empty name returns core's answer (None), not a recordset."""
+        """Core returns None for an empty name; the adapter must not turn that
+        into a recordset, because `_retrieve_partner` tests ``len(partner) == 1``
+        on whatever comes back."""
         self.assertEqual(
             self._ai(self._seller())._retrieve_partner_with_name("", NO_COMPANY),
             self.Partner._retrieve_partner_with_name("", NO_COMPANY),
         )
 
     # ------------------------------------------------------------------
-    # What is not composed at this slot: both tests fail if the adapter
-    # calls `_ai_find_vendor`.
+    # 🔴 What is NOT composed at this slot. Both tests below FAIL if the
+    # adapter calls `_ai_find_vendor` — which is what the dual-core design proposes.
     # ------------------------------------------------------------------
 
     def test_our_name_rule_does_not_run_at_core_s_name_slot(self):
-        """Two top-level partners sharing a name are returned unresolved.
+        """Two top-level partners share a name, and the adapter must REFUSE to
+        pick one — `_retrieve_partner` tests ``len(partner) == 1`` on whatever
+        comes back, so handing it a single record IS the decision.
 
-        `_ai_find_vendor`'s own name rule would pick by `supplier_rank`; that
-        rule must not run here, because the caller treats a single record as
-        the decision."""
-        # Low rank created first, so "first created" and "highest rank" differ.
+        🔴 THE ASSERTION USED TO BE IDENTITY WITH CORE'S OWN ANSWER, AND
+        19.0.3.8.0 RETIRED THAT, which is worth stating rather than quietly
+        editing. Since this module narrows core's name step itself
+        (`_ai_retrieve_partner_with_exact_name` — ``=ilike`` instead of
+        ``ilike``), "what core returns" and "what we return" are no longer the
+        same object by construction, and on the search-plan build they never
+        were: that core's `_retrieve_partner_with_name` is a deprecated stub
+        that delegates to `_retrieve_partner` and resolves to ONE record, while
+        the legacy one hands back two for its caller to refuse. Identity with a
+        stub that nothing calls is not a property worth protecting; NOT
+        RESOLVING THE AMBIGUITY is, and it is the same claim on both builds.
+
+        `_ai_find_vendor`'s own name rule WOULD resolve it: it orders by
+        `supplier_rank`, so it picks the second row. The control at the end says
+        so, which is what stops this test passing by coincidence."""
+        # Created low rank FIRST, so "whichever came first" and "highest
+        # supplier_rank" cannot be the same record.
         low = self.Partner.create(
             {"name": "ZZ Twinned Trading", "is_company": True, "supplier_rank": 1}
         )
         high = self.Partner.create(
             {"name": "ZZ Twinned Trading", "is_company": True, "supplier_rank": 9}
         )
-        # `_ai_find_vendor` raises for the duration.
+        # 🔴 THE FIRST CONTROL, and it can fail: `_ai_find_vendor` raises for the
+        # duration. the dual-core design proposes calling exactly that method here; this
+        # guard turns "we don't" from a reading of the code into a run.
         with patch.object(type(self.Partner), "_ai_find_vendor", _explode):
             ours = self._ai(
                 self._seller(name="ZZ Twinned Trading")
@@ -305,7 +397,9 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
         self.assertIn(low, ours)
         self.assertIn(high, ours)
-        # Control: the whole matcher does resolve it, by supplier_rank.
+        # 🔴 THE SECOND CONTROL: the whole matcher does resolve it, and to the
+        # row our name rule prefers. Without this the assertions above would
+        # also pass if nothing anywhere could ever pick a winner.
         self.assertEqual(
             self.Partner._ai_find_vendor({"name": "ZZ Twinned Trading"}),
             high,
@@ -314,7 +408,10 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
 
     def test_our_vat_rule_does_not_run_at_core_s_name_slot(self):
-        """VAT is not retried here; core already ran its own VAT step."""
+        """Core ran its own VAT step — twice, and with prefix and zero-padding
+        variants — long before the name slot. Retrying VAT here would be a rule
+        that exists on one build and not the other, which is the defect the dual-core design
+        exists to remove."""
         self.Partner.create(
             {
                 "name": "ZZ Vatted Slot Co",
@@ -334,24 +431,32 @@ class TestTheNameSlotAdapter(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_both_adapters_compose_the_same_three_rules(self):
-        """The legacy adapter goes through the shared
-        `_ai_vendor_from_seller_keys` composition."""
+        """🔴 ONE BODY FOR THE COMPOSITION, not only for each rule. The
+        search-plan adapter inserts business id, phone and domain as three plan
+        steps; the legacy adapter runs the same three in the same order at the
+        same relative position. Stubbing the shared composition must change the
+        legacy adapter's answer — otherwise there are two spellings again."""
         with patch.object(
             type(self.Partner),
             "_ai_vendor_from_seller_keys",
             lambda self, seller, company=None: self.env["res.partner"],
         ):
             found = self._ai(
-                self._seller(phone="718.555.0177")
+                self._seller(phone="212.555.0177")
             )._retrieve_partner_with_name("ZZ PRINTED NAME NOBODY HAS", NO_COMPANY)
         self.assertFalse(found, "the adapter must go through the shared composition")
 
     def test_the_shared_composition_leaves_vat_and_name_to_core(self):
-        """The shared composition matches by phone but not by name."""
+        """The composition itself, called directly: the three keys it adds, and
+        neither of the two it does not."""
         self.assertEqual(
-            # A national-form phone is normalised under the seller's country.
+            # `country_code` since 19.0.3.11.0: a national-form number is
+            # normalised under the seller's country, and this bench's
+            # installation default is Finnish. The fixture is a US vendor, so
+            # the document has to say so — the same thing `_seller()` does for
+            # every other test in this class.
             self.Partner._ai_vendor_from_seller_keys(
-                {"phone": "718.555.0177", "country_code": "US"}
+                {"phone": "212.555.0177", "country_code": "US"}
             ),
             self.vendor,
         )
@@ -363,8 +468,10 @@ class TestTheNameSlotAdapter(TransactionCase):
         )
 
     def test_the_whole_matcher_still_carries_both(self):
-        """`_ai_find_vendor`, used post-decode, keeps its name and VAT
-        rules."""
+        """🔴 THE CONTROL for the test above. `_ai_find_vendor` is a DIFFERENT
+        composition with a different job — it answers on an unknown document,
+        post-decode, where no core step runs at all — and it keeps its name and
+        VAT rules. If this ever starts failing, the hoist has been flattened."""
         self.assertEqual(
             self.Partner._ai_find_vendor({"name": "ZZ Slot Vendor Holdings"}),
             self.vendor,
@@ -373,10 +480,22 @@ class TestTheNameSlotAdapter(TransactionCase):
 
 @tagged("post_install", "-at_install")
 class TestBothProfilesAreCovered(TransactionCase):
-    """Checks that profile-gated tests really ran or skipped on this build.
+    """🔴 Two benches that never disagree are one bench run twice (the dual-core design).
 
-    ``test_sequence`` puts this class last, since Odoo's loader sorts on it and
-    the run-time registries are only complete at the end of the run.
+    🔴 AND THE ASSERTION THAT USED TO LIVE HERE COULD NOT FAIL FOR A RUN-LEVEL
+    REASON (found in review). It read `PROFILE_GATED`, which the
+    decorators fill when Python EVALUATES THE DECORATOR LINE — so it was
+    identical on a search-plan bench, on a legacy bench, and on a bench where
+    all 28 gated tests skipped because the recorded profile was `unknown`. It
+    was satisfied by the decorators being present in the source. The protection
+    its docstring claimed (a typo in a profile name) is really provided by the
+    `ValueError` in `profiles.py`, which fires at import.
+
+    ``test_sequence`` puts this class LAST in the suite — Odoo's loader sorts on
+    exactly that attribute (`odoo/tests/loader.py:107`, identical on both
+    measured frameworks) — because a run-time set read half way through a run is
+    a half-filled set, and an assertion on one of those is the same kind of
+    nothing as the assertion it replaces.
     """
 
     #: Last. See the class docstring.
@@ -422,10 +541,14 @@ class TestBothProfilesAreCovered(TransactionCase):
             )
 
     def test_the_number_of_gated_tests_is_the_number_recorded(self):
-        """The gated-test count matches `EXPECTED_GATED` in `profiles.py`.
+        """🔴 THE ONE ASSERTION THAT MUST BE A WRITTEN-DOWN NUMBER.
 
-        A dropped test module or deleted decorator shrinks every run-time
-        registry together, so only a written-down number notices.
+        The run-time sets above cannot see a whole test module dropped from
+        `tests/__init__.py` or a `@skip_unless_profile` line deleted: the
+        decorator then never evaluates, every registry shrinks together, and
+        all three agree about a smaller world. A count stated in `profiles.py`
+        — and kept equal to the skip counts in `__manifest__.py` — is what
+        notices.
         """
         for profile in (PROFILE_SEARCH_PLAN, PROFILE_LEGACY):
             self.assertEqual(
@@ -442,8 +565,10 @@ class TestBothProfilesAreCovered(TransactionCase):
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN)
     def test_a_search_plan_gate_in_this_very_class_fired(self):
-        """A gate inside this class proves the registries were written during
-        this run."""
+        """🔴 THE CONTROL ON THE CONTROL. One gate of each profile lives in the
+        class that reads the registries, so `PROFILE_RAN` and `PROFILE_SKIPPED`
+        are known to be written by something this run executed — not merely to
+        be non-empty because some earlier module filled them."""
         self.assertIn(
             "TestBothProfilesAreCovered."
             "test_a_search_plan_gate_in_this_very_class_fired",
@@ -467,13 +592,21 @@ class TestBothProfilesAreCovered(TransactionCase):
 
 
 class _ImportHarness(TransactionCase):
-    """One real import with only the Claude call mocked.
+    """One real import, both benches: the paid Claude call is the only thing
+    mocked, and the extraction identifies its vendor by PHONE alone.
 
-    The right vendor is reachable only by the printed phone (in another format).
-    The decoy is reachable by the legacy core's substring name step: "ZZ Hook
-    Supplies" finds "ZZ Hook Supplies International". The adapter has to win at
-    core's name slot, because a wrong match leaves `partner_id` set and skips
-    the module's post-decode recovery.
+    🔴 THE FIXTURE IS THE ARGUMENT. Two partners exist. The right one is
+    reachable only by the printed phone number, in a different format from the
+    stored one. The decoy is reachable by core's own legacy name step, which is
+    ``('name', 'ilike', name)`` — a SUBSTRING match — so the printed
+    "ZZ Hook Supplies" finds "ZZ Hook Supplies International" and `_retrieve_partner`
+    accepts it, because exactly one row came back.
+
+    That is why "the adapter fills an empty slot" is NOT what these tests
+    assert. Without it the bill is filed against the WRONG vendor and the
+    module's post-decode safety net never runs, because that net is gated on an
+    empty `partner_id`. The adapter has to WIN at core's name slot, not clean up
+    after it.
     """
 
     @classmethod
@@ -489,7 +622,7 @@ class _ImportHarness(TransactionCase):
                 "name": "ZZ Hook Vendor Holdings",
                 "is_company": True,
                 "supplier_rank": 6,
-                "phone": "+1 718-555-0166",
+                "phone": "+1 212-555-0166",
                 "country_id": cls.us.id,
             }
         )
@@ -503,8 +636,11 @@ class _ImportHarness(TransactionCase):
         )
 
     def _extracted(self):
-        """No VAT on the document: the legacy core creates a vendor from
-        `name and vat`, and this test is about matching only."""
+        """🔴 NO VAT ON THE DOCUMENT, deliberately: the legacy core creates a
+        vendor from `name and vat` (`account_edi_common.py:545`), and this test
+        is about matching, not about the create-suppression that the dual-core design
+        owns. A US bill printing no tax id is also the common case — most
+        US vendor bills print none."""
         return {
             "type": "Invoice",
             "invoice_number": "ZZ-HOOK-1",
@@ -513,7 +649,7 @@ class _ImportHarness(TransactionCase):
             "seller": {
                 "name": "ZZ Hook Supplies",
                 "country_code": "US",
-                "phone": "718.555.0166",
+                "phone": "212.555.0166",
             },
             "buyer": {
                 "name": self.company.name,
@@ -557,7 +693,7 @@ class _ImportHarness(TransactionCase):
                 "mimetype": "application/pdf",
             }
         )
-        record = self.env["ai.invoice.import"].create(
+        record = self.env["goodahead.invoice.import"].create(
             {
                 "name": "zz-hook.pdf",
                 "company_id": self.company.id,
@@ -594,7 +730,12 @@ class _ImportHarness(TransactionCase):
 @skip_unless_profile(PROFILE_SEARCH_PLAN)
 @tagged("post_install", "-at_install")
 class TestTheNameSlotIsInertOnTheSearchPlanBuild(_ImportHarness):
-    """On the search-plan build a full import never enters the name slot."""
+    """🔴 Inert here is a MEASUREMENT, not a reading.
+
+    On this core `_retrieve_partner_with_name` is a deprecated stub with no core
+    callers, so the override cannot change anything. "Nothing calls it" is a
+    claim about a tree; this is a claim about a run.
+    """
 
     def test_a_full_import_never_enters_the_name_slot(self):
         calls, counting = self._counting_name_slot()
@@ -604,14 +745,17 @@ class TestTheNameSlotIsInertOnTheSearchPlanBuild(_ImportHarness):
         self.assertEqual(
             calls, [], "the legacy adapter must never be entered on this build"
         )
-        # Control: the import ran and matched through the search plan.
+        # 🔴 THE CONTROL: the import really ran, and really matched, through the
+        # search plan. Without this the empty list above would also be what a
+        # broken import produced.
         self.assertEqual(record.move_id.partner_id, self.vendor)
 
 
 @skip_unless_profile(PROFILE_LEGACY)
 @tagged("post_install", "-at_install")
 class TestTheNameSlotFiresOnTheLegacyBuild(_ImportHarness):
-    """On the legacy build the name slot is the module's live hook."""
+    """🔴 The half that could not be written before this step: the module now
+    has a live hook on the legacy core."""
 
     def test_a_full_import_enters_the_name_slot_and_beats_core_s_name_match(self):
         calls, counting = self._counting_name_slot()
@@ -627,11 +771,20 @@ class TestTheNameSlotFiresOnTheLegacyBuild(_ImportHarness):
         )
 
     def test_core_s_own_name_step_files_the_bill_against_the_wrong_vendor(self):
-        """With core's own name step patched back in, the substring match files
-        the bill against the decoy.
+        """🔴 THE CONTROL, and the reason the adapter exists.
 
-        Patching in core's class function removes both of this module's
-        additions at the slot (the three keys and the ``=ilike`` narrowing).
+        With this module's whole name-slot override replaced by CORE's own
+        implementation, the same import reaches core's `name ilike` step,
+        matches the decoy, and nothing anywhere disagrees — the module's
+        post-decode safety net is gated on an EMPTY `partner_id`, so a wrong
+        match silences it.
+
+        ⚠️ IT USED TO STUB `_ai_vendor_from_seller_keys` ONLY, which stopped
+        being a control the moment 19.0.3.8.0 narrowed the name step itself: the
+        stub disarmed our three keys and left our `=ilike` narrowing in place,
+        so "core's own name step" was not what ran. Patching in core's class
+        function covers BOTH of this module's additions at this slot and tracks
+        whatever core's rule actually is, rather than a sentence written here.
         """
         with patch.object(
             type(self.env["res.partner"]),
@@ -652,19 +805,42 @@ class TestTheNameSlotFiresOnTheLegacyBuild(_ImportHarness):
 
 @tagged("post_install", "-at_install")
 class TestASubstringNameIsNotAVendor(_ImportHarness):
-    """A printed name that is only a substring of a partner's name does not
-    decide the vendor, on either build.
+    """🔴 THE DUAL-CORE DESIGN — THE GAP THAT HAD NO STEP. Both builds, one assertion.
 
-    Older builds' name step used ``ilike``; a wrong match would leave
-    `partner_id` set and suppress the banner, candidate cards and learning.
-    The fixture prints no phone, so only core's name step can decide. This
-    class is deliberately not profile-gated: the outcome must be the same on
-    both builds.
+    *(measured, 2026-10-10)* core's name step is spelled differently on the two
+    19.0 builds this module targets:
+
+      * search-plan — `res.partner._import_retrieve_customer_from_name` searches
+        ``[('name', '=ilike', name)]``: an EXACT, case-insensitive match
+        (`account/models/partner.py:1013` at `189df353`).
+      * legacy — `res.partner._retrieve_partner_with_name` searches
+        ``[('name', 'ilike', name)]``: a SUBSTRING match
+        (`account/models/partner.py:956` at `ca1f0aea`), accepted by
+        `_retrieve_partner` whenever exactly one row comes back.
+
+    So on the legacy build a printed vendor name that is merely a SUBSTRING of
+    one existing partner's name wins, confidently. And because this module's
+    whole recovery path — the banner, the candidate cards, the chatter note,
+    the learning — is gated on an EMPTY `partner_id`, a wrong match does not
+    add a row: it SILENCES all of it. F27's promise ("no vendor is invented,
+    and an unrecognised one is visible") is not kept on that build, and the dual-core design
+    step 4 cannot fix it, because suppressing a CREATE cannot suppress a MATCH.
+
+    🔴 THE FIXTURE PRINTS NO PHONE, deliberately. The harness's vendor is
+    reachable only by phone, so dropping it leaves NO key of ours able to fire
+    and puts core's name step alone in the frame. That is the only way to
+    measure core's name step rather than our adapter.
+
+    THIS CLASS IS NOT PROFILE-GATED, and that is the point: one fixture, one
+    assertion, the SAME expected outcome on both builds. Two benches that never
+    disagree are one bench run twice — but two benches that disagree about
+    whether a vendor was invented are a defect, not a profile.
     """
 
     def _extracted(self):
         extracted = super()._extracted()
-        # Without the phone, nothing this module knows identifies the seller.
+        # 🔴 The one change from the harness. With the phone gone, nothing this
+        # module knows can identify the seller, so whatever decides is core's.
         extracted["seller"].pop("phone", None)
         return extracted
 
@@ -682,10 +858,18 @@ class TestASubstringNameIsNotAVendor(_ImportHarness):
         )
 
     def test_the_partner_it_resembles_is_still_offered_as_a_candidate(self):
-        """The resembling partner is offered as a candidate instead.
+        """🔴 THE ARGUMENT THAT NOTHING IS LOST, AND THE CONTROL.
 
-        `_ai_vendor_candidates` searches the same ``ilike``, so nothing is
-        lost; this is also the control for the test above.
+        Narrowing the decision does not throw the information away: every
+        partner core's substring step could have matched is already in the set
+        `account.move._ai_vendor_candidates` offers under *"similar name"* —
+        it searches the same ``('name', 'ilike', name)``. So the change moves
+        this partner from a SILENT DECISION to a VISIBLE CANDIDATE, which is
+        the vocabulary F27 already put in this module.
+
+        It is also the control for the test above: without it, an import that
+        failed outright would produce an empty `partner_id` too and the
+        assertion would pass for the wrong reason.
         """
         record, _outcome = self._run_import()
 

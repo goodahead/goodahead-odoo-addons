@@ -1,8 +1,27 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
 <!--
-    Dedicated channel for AI extraction jobs, separate from `root.claude_api` so
-    a bulk upload of slow extractions cannot starve other Claude features.
-    Capacity is set in odoo.conf (`channels = root:N,root.ai_import:1`).
+    A dedicated channel for the AI extraction jobs.
+
+    The source module did not ship this record, on the grounds that queue_job
+    stores the channel as a plain string and auto-creates the node. True, but
+    every other module in THIS tree that enqueues work declares its channel
+    (`goodahead_claude` -> claude_api, `goodahead_fraud_detection` ->
+    fraud_detection, trackpod -> two, twilio_transport, the three conversion
+    modules), so the record is here to match the convention and, more usefully,
+    so the channel shows up in the UI where its capacity can be set.
+
+    🔴 It is NOT `root.claude_api`, even though these are Claude calls.
+    `goodahead_fraud_detection` already keeps its own channel rather than
+    sharing that one, and for a good reason: an AI invoice extraction takes
+    ~60 s and may queue in bulk when somebody uploads a folder of PDFs. Sharing
+    a channel would let a batch of invoices starve fraud detection, which is
+    latency-sensitive in a way this is not.
+
+    ⚠️ Capacity is a DEPLOY-CONFIG setting, not a field on this record — the
+    `channels = root:N,root.ai_import:1` line in odoo.conf. Without it the
+    channel inherits root's capacity and the point of having it is lost.
 -->
 <odoo noupdate="1">
     <record id="channel_ai_import" model="queue.job.channel">

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright 2026 Goodahead Oy
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<!-- Invented SendInvoiceZIP answer: accepted with a warning (the reference page's example shape) -->
+<Response version="1.0">
+ <Status>OK</Status>
+ <StatusCode>1000</StatusCode>
+ <FreeText language="en">OK</FreeText>
+ <Content>
+  <Group>
+   <Value type="BatchID">00000000-aaaa-bbbb-cccc-000000000002</Value>
+   <Value type="Saldo">249</Value>
+   <Value type="CostInCredits">1</Value>
+   <Value type="NetworkedInvoices">1</Value>
+   <Value type="Letters">0</Value>
+   <Value type="LetterPages">0</Value>
+   <Value type="AcceptedDocument">1</Value>
+  </Group>
+  <Group>
+   <Value type="AcceptedDocumentID">ZZ-2002</Value>
+   <Value type="ValidateText">Document InvoiceID ZZ-2002 Warning: BuyerOrganisationTaxCode is missing</Value>
+   <Value type="ValidateText:fi">Dokumentti ZZ-2002 Varoitus: BuyerOrganisationTaxCode puuttuu</Value>
+   <Value type="ValidateText:sv">Dokument ZZ-2002 Varning: BuyerOrganisationTaxCode saknas</Value>
+  </Group>
+ </Content>
+</Response>
