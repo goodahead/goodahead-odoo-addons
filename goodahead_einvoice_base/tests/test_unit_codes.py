@@ -69,11 +69,12 @@ class TestUnitCodes(TransactionCase):
             "uom.product_uom_cubic_meter": "MTQ",
             "uom.product_uom_kwh": "KWH",
         }
-        # Odoo 18.0 ships no minute and no kWh unit (19.0 does): they are
-        # filled by name when a database has them.
+        # Odoo 18.0 shipped no minute and no kWh unit before November 2026
+        # (19.0 always did). Where core has them they carry their code; on an
+        # older build they are filled by name when a database has them.
         for xmlid in ("uom.product_uom_minute", "uom.product_uom_kwh"):
-            self.assertFalse(self.env.ref(xmlid, raise_if_not_found=False))
-            expected.pop(xmlid)
+            if not self.env.ref(xmlid, raise_if_not_found=False):
+                expected.pop(xmlid)
         for xmlid, code in expected.items():
             with self.subTest(unit=xmlid):
                 self.assertEqual(self.env.ref(xmlid).rec20_code, code)

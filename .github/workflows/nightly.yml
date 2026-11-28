@@ -1,0 +1,178 @@
+# Nightly: every module of each branch against the newest Odoo commit of the
+# same series. Odoo changes internal import methods inside a stable series; this
+# catches it the morning after, not at a customer's next upgrade.
+#
+# Scheduled workflows only run from the default branch, so this one file tests
+# every branch listed in the matrix. A pull request into a release branch runs
+# the same tests on its own changes, against the newest Odoo of that series,
+# before it can be merged (the same file is on every release branch for that).
+name: Nightly against Odoo head
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: ["18.0", "19.0"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.series }} on Odoo ${{ matrix.series }} head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # A pull request tests only the branch it targets; the nightly tests all.
+        series: ${{ github.event_name == 'pull_request' && fromJSON(format('["{0}"]', github.base_ref)) || fromJSON('["19.0", "18.0"]') }}
+        python: ["3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out the modules (${{ matrix.series }}, or the pull request)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || matrix.series }}
+          path: addons
+          persist-credentials: false
+
+      - name: Check out Odoo ${{ matrix.series }} head
+        run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/odoo/odoo.git odoo
+
+      - name: Check out queue_job (OCA/queue ${{ matrix.series }})
+        run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/OCA/queue.git oca-queue
+
+      - name: Check out l10n_fi_edicode (OCA/l10n-finland ${{ matrix.series }})
+        run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/OCA/l10n-finland.git oca-l10n-finland
+
+      - name: Record the tested commits
+        id: commits
+        run: |
+          odoo_sha=$(git -C odoo rev-parse HEAD)
+          echo "odoo_sha=$odoo_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ matrix.series }}"
+            echo "- Odoo: [\`${odoo_sha:0:10}\`](https://github.com/odoo/odoo/commit/$odoo_sha) ($(git -C odoo log -1 --format=%cI))"
+            echo "- Modules: \`$(git -C addons rev-parse --short HEAD)\`"
+            echo "- queue_job: \`$(git -C oca-queue rev-parse --short HEAD)\`"
+            echo "- l10n_fi_edicode: \`$(git -C oca-l10n-finland rev-parse --short HEAD)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: odoo/requirements.txt
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libldap2-dev libsasl2-dev libpq-dev
+
+      - name: Install Python requirements (Odoo, OCA/queue)
+        run: |
+          python -m pip install --upgrade pip wheel
+          python -m pip install -r odoo/requirements.txt
+          # OCA generates this from the manifests' external_dependencies
+          # (queue_job 19.0 needs openupgradelib).
+          python -m pip install -r oca-queue/requirements.txt
+
+      - name: Run the tests
+        run: |
+          # Only queue_job from OCA/queue and l10n_fi_edicode from
+          # OCA/l10n-finland: the rest of those repos has dependencies this run
+          # does not install.
+          mkdir -p oca-addons
+          ln -s "$PWD/oca-queue/queue_job" oca-addons/queue_job
+          ln -s "$PWD/oca-l10n-finland/l10n_fi_edicode" oca-addons/l10n_fi_edicode
+
+          # The *_migration_community adapters need the community APIX modules
+          # (connector_apix and its stack), which this run does not install;
+          # they are only for sites moving off those modules.
+          all=$(for manifest in addons/*/__manifest__.py; do
+            basename "$(dirname "$manifest")"
+          done | grep -v '_migration_community$' | sort)
+
+          # goodahead_bill_approval holds every vendor bill and credit note for
+          # two approvals before it can post. That is its job, and it refuses
+          # the postings the e-invoicing tests make, so it gets its own database.
+          approval=$(echo "$all" | grep -x 'goodahead_bill_approval' | paste -sd, - || true)
+          einvoicing=$(echo "$all" | grep -vx 'goodahead_bill_approval' | paste -sd, -)
+
+          # No demo data on either series (18.0 loads it by default, 19.0 does
+          # not): the tests build their own records and count what they made.
+          run_suite() {
+            db=$1
+            modules=$2
+            tags=$(echo "$modules" | sed 's/[^,]*/\/&/g')
+            echo "Database $db, modules: $modules"
+            python odoo/odoo-bin \
+              --config=/dev/null \
+              --db_host=localhost --db_port=5432 \
+              --db_user=odoo --db_password=odoo \
+              --addons-path="$PWD/odoo/addons,$PWD/addons,$PWD/oca-addons" \
+              --data-dir="$RUNNER_TEMP/odoo-data" \
+              -d "$db" \
+              --without-demo=True \
+              -i "$modules" \
+              --test-tags "$tags" \
+              --stop-after-init --no-http \
+              --log-level=info \
+              2>&1 | tee "odoo-$db.log"
+          }
+
+          set -o pipefail
+          status=0
+          run_suite einvoicing "$einvoicing" || status=1
+          if [ -n "$approval" ]; then
+            run_suite approval "$approval" || status=1
+          fi
+          exit $status
+
+      - name: Check the result
+        if: always()
+        run: |
+          failed=0
+          for log in odoo-*.log; do
+            [ -e "$log" ] || { echo "No log was written (the run step failed early)"; failed=1; continue; }
+            result=$(grep -E "odoo.tests.result: [0-9]+ failed, [0-9]+ error\(s\) of [0-9]+ tests" "$log" | tail -1 || true)
+            echo "- $log: ${result:-no test result line (install failed?)}" >> "$GITHUB_STEP_SUMMARY"
+            echo "$log: $result"
+            grep -E "(FAIL|ERROR): Test|Traceback|CRITICAL" "$log" | head -50 || true
+            case "$result" in
+              *" 0 failed, 0 error(s) of "*) ;;
+              *) failed=1 ;;
+            esac
+          done
+          if [ "$failed" != 0 ]; then
+            echo "::error::${{ matrix.series }} fails on Odoo ${{ steps.commits.outputs.odoo_sha }}"
+            exit 1
+          fi
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odoo-${{ matrix.series }}-logs
+          path: odoo-*.log
+          retention-days: 14
