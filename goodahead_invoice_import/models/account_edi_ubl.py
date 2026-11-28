@@ -497,7 +497,24 @@ class AccountEdiUbl(models.AbstractModel):
         row-scoping.
         """
         plan = super()._import_ubl_retrieve_products_search_plan(collected_values)
+        return self._ai_narrow_products_search_plan(collected_values, plan)
 
+    def _import_retrieve_products_search_plan(self, collected_values):
+        """The same narrowing, under the name newer 19.0 cores call.
+
+        Core 5baa557 (2026-09-01) moved the product search plan from
+        `account.edi.ubl._import_ubl_retrieve_products_search_plan` to
+        `account.edi.common._import_retrieve_products_search_plan` and removed
+        the old name, so the override above is never called there and nothing
+        fails. Each core calls exactly one of the two names, so both stay.
+        Overriding it on `account.edi.ubl` keeps the narrowing to UBL decodes.
+        """
+        plan = super()._import_retrieve_products_search_plan(collected_values)
+        return self._ai_narrow_products_search_plan(collected_values, plan)
+
+    def _ai_narrow_products_search_plan(self, collected_values, plan):
+        """Core's product plan, narrowed as described in
+        `_import_ubl_retrieve_products_search_plan`."""
         if collected_values.get("odoo_document_type") != "purchase":
             return plan
 

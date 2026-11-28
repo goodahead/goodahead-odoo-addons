@@ -62,6 +62,17 @@ from odoo.addons.account_edi_ubl_cii.models.account_edi_common import (
     AccountEdiCommon as CoreAccountEdiCommon,
 )
 
+# The name core gives the product search plan on THIS build, asked of core's own
+# classes (the registry has both names, through this module). Core 5baa557
+# (2026-09-01) moved it from `account.edi.ubl._import_ubl_retrieve_products_
+# search_plan` to `account.edi.common._import_retrieve_products_search_plan`.
+if hasattr(CoreAccountEdiCommon, "_import_retrieve_products_search_plan"):
+    PLAN_HOOK = "_import_retrieve_products_search_plan"
+    CORE_PLAN_OWNER = CoreAccountEdiCommon
+else:
+    PLAN_HOOK = "_import_ubl_retrieve_products_search_plan"
+    CORE_PLAN_OWNER = CoreAccountEdiUBL
+
 # A code we DO have a supplierinfo row for.
 MAPPED_CODE = "ZZ-ART-7788"
 # A code we have NO supplierinfo row for, which also happens to be the internal
@@ -182,11 +193,10 @@ class TestProductMatching(TransactionCase):
         return lines[0].product_id
 
     def _plan_names(self, collected_values):
+        decoder = self.env["account.edi.xml.ubl_bis3"]
         return [
             getattr(step, "__name__", "")
-            for step in self.env[
-                "account.edi.xml.ubl_bis3"
-            ]._import_ubl_retrieve_products_search_plan(collected_values)
+            for step in getattr(decoder, PLAN_HOOK)(collected_values)
         ]
 
     # ------------------------------------------------------------------
@@ -618,17 +628,14 @@ class TestProductMatching(TransactionCase):
         # module's — and comes straight back to the narrowed implementation.
         # The guard below is what caught it; without the guard this test would
         # have "passed" by asserting on the narrowed plan's own output.
+        core_plan = getattr(CORE_PLAN_OWNER, PLAN_HOOK)
         unnarrowed = (
-            lambda self, collected_values: (  # noqa: E731
-                CoreAccountEdiUBL._import_ubl_retrieve_products_search_plan(
-                    self, collected_values
-                )
+            lambda self, collected_values: core_plan(  # noqa: E731
+                self, collected_values
             )
         )
 
-        with patch.object(
-            Bis3, "_import_ubl_retrieve_products_search_plan", unnarrowed
-        ):
+        with patch.object(Bis3, PLAN_HOOK, unnarrowed):
             # Guard the guard: prove the narrowing really is off before drawing
             # any conclusion from what follows.
             self.assertIn(
