@@ -8,6 +8,24 @@ that was installed at that version.
 
 ---
 
+19.0.1.12.6 — product matching on newer Odoo 19.0 builds.
+
+### Fixed
+
+- Odoo moved the product search plan from
+  `account.edi.ubl._import_ubl_retrieve_products_search_plan` to
+  `account.edi.common._import_retrieve_products_search_plan` (odoo/odoo
+  5baa557, September 2026) and removed the old name. The vendor-scoped
+  narrowing was no longer called on those builds, so a vendor's article code
+  could again match one of our internal references. It now hooks both names;
+  each core calls exactly one.
+- The `search_plan` core profile requires one of the two product hooks, so a
+  core with neither is refused instead of matching unnarrowed.
+- Peppol endpoints follow core's per-scheme format rules (0007, 0208, 0235),
+  so a value core rejects is left out instead of failing the import.
+
+---
+
 19.0.1.12.5 — security fixes.
 
 ### Security

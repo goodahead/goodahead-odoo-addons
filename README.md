@@ -28,7 +28,7 @@ and two-step bill approval.
 
 | Module | Version | What it does |
 |--------|---------|--------------|
-| [goodahead_invoice_import](goodahead_invoice_import/) | 19.0.1.12.5 | Shared import machinery for vendor bills: import records, vendor matching, vendor-data suggestions, bank checks and bill decoding. |
+| [goodahead_invoice_import](goodahead_invoice_import/) | 19.0.1.12.6 | Shared import machinery for vendor bills: import records, vendor matching, vendor-data suggestions, bank checks and bill decoding. |
 | [goodahead_invoice_ai_import](goodahead_invoice_ai_import/) | 19.0.4.2.4 | Import vendor bills from PDF using Claude AI and Peppol BIS 3.0. |
 | [goodahead_invoice_import_finvoice](goodahead_invoice_import_finvoice/) | 19.0.1.6.4 | Import Finvoice e-invoices uploaded or received by email as draft vendor bills, without any AI reading. |
 | [goodahead_invoice_import_apix](goodahead_invoice_import_apix/) | 19.0.1.10.6 | Fetch e-invoice packages from APIX for every company, each company in its own background job. |

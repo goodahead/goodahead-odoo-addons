@@ -20,6 +20,7 @@ honest Peppol scheme must IMPORT, not fail.
 """
 
 import logging
+import re
 
 from lxml import etree
 
@@ -561,17 +562,26 @@ def _fmt_decimal(value, label="an amount"):
 # email, phone and name all still run. It can never fail an import, and it
 # removes the way to match the WRONG vendor with confidence.
 #
-# ⚠️ `0208`, `0009`, `0007` and `EM` carry extra format rules in core's
-# `_build_error_peppol_endpoint` beyond the character check below. None of them
-# is a `'vat'` entry, so none of them is reachable from here — and
-# `test_peppol_endpoint.py` asserts that against core rather than trusting this
-# comment.
+# ⚠️ Core's `_build_error_peppol_endpoint` adds per-scheme format rules on top
+# of the character check. Newer builds give some `'vat'` schemes one too (0235,
+# the UAE TIN, from November 2026), so the rules are mirrored below;
+# `test_peppol_endpoint.py` asserts against core that this module never emits
+# an endpoint core rejects.
+
+#: Format rules core's `_build_error_peppol_endpoint` applies per scheme on
+#: top of the character rules. Applied on every build: on a core without a
+#: rule, being stricter only means one endpoint fewer, never a failed import.
+PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS = {
+    "0007": re.compile(r"^\d{10}$"),
+    "0208": re.compile(r"^\d{10}$"),
+    "0235": re.compile(r"^\d{10}$"),
+}
 
 
 def peppol_endpoint_is_valid(eas, endpoint):
-    """Core's character and length rules for an endpoint, applied here.
+    """Core's character, length and per-scheme format rules for an endpoint.
 
-    Mirrors the tail of `res.partner._build_error_peppol_endpoint`, which is the
+    Mirrors `res.partner._build_error_peppol_endpoint`, which is the
     `@api.constrains` that rejected the Finnish bill. Checking before emitting
     is what turns "the import failed" into "the import has no EndpointID".
     """
@@ -580,7 +590,10 @@ def peppol_endpoint_is_valid(eas, endpoint):
     invalid_chars_re = PEPPOL_ENDPOINT_INVALID_CHARS_RE_BY_EAS.get(
         eas, PEPPOL_ENDPOINT_INVALIDCHARS_RE
     )
-    return not invalid_chars_re.search(endpoint) and 1 <= len(endpoint) <= 50
+    if invalid_chars_re.search(endpoint) or not 1 <= len(endpoint) <= 50:
+        return False
+    format_re = PEPPOL_ENDPOINT_FORMAT_RE_BY_EAS.get(eas)
+    return not format_re or bool(format_re.match(endpoint))
 
 
 def vat_peppol_eas_codes(country_code):

@@ -416,29 +416,40 @@ class TestPeppolEndpoint(TransactionCase):
     def test_our_validator_agrees_with_cores(self):
         """🔴 THE DRIFT DETECTOR.
 
-        `peppol_endpoint_is_valid` reimplements only the character/length tail of
-        core's `_build_error_peppol_endpoint`. That is sound today because the
-        four EAS codes carrying extra format rules (`0208`, `0009`, `0007`,
-        `EM`) are none of them `'vat'` entries — but "today" is a claim about
-        core, so it is asked of core on every run instead of being written in a
-        comment.
+        `peppol_endpoint_is_valid` reimplements core's character/length checks
+        and the per-scheme format rules core has on its newest build (0235, a
+        `'vat'` scheme, gained one in November 2026). It may be stricter than an
+        older core — that only drops an endpoint — but never looser. "Never
+        looser" is a claim about core, so it is asked of core on every run.
 
-        The probe is sanitised per scheme first, so the Belgian rule (which
+        Probes are sanitised per scheme first, so the Belgian rule (which
         allows only `b`, `e`, `B`, `E` and digits) is not failed by the probe's
         own letters. If core ever adds a rule to a scheme we emit — a digit
-        count, a checksum — core will reject the probe while we accept it, and
-        this fails.
+        count, a checksum — core will reject a probe we accept, and this fails.
         """
         for country in EAS_MAPPING:
             for eas in vat_peppol_eas_codes(country):
-                probe = sanitize_peppol_endpoint("AB1234567890", eas)
-                with self.subTest(country=country, eas=eas):
-                    self.assertEqual(
-                        bool(self.Partner._build_error_peppol_endpoint(eas, probe)),
-                        not peppol_endpoint_is_valid(eas, probe),
-                        f"core and this module disagree about EAS {eas} "
-                        f"({country}); core's rules have moved",
+                for raw in ("AB1234567890", "1234567890"):
+                    probe = sanitize_peppol_endpoint(raw, eas)
+                    core_rejects = bool(
+                        self.Partner._build_error_peppol_endpoint(eas, probe)
                     )
+                    ours_accepts = peppol_endpoint_is_valid(eas, probe)
+                    with self.subTest(country=country, eas=eas, probe=probe):
+                        if core_rejects:
+                            self.assertFalse(
+                                ours_accepts,
+                                f"this module would emit an EAS {eas} endpoint "
+                                f"({country}) that core rejects; core's rules "
+                                "have moved",
+                            )
+                        if raw == "1234567890":
+                            self.assertEqual(
+                                ours_accepts,
+                                not core_rejects,
+                                f"core and this module disagree about a plain "
+                                f"10-digit EAS {eas} endpoint ({country})",
+                            )
 
     def test_the_validator_can_still_say_no(self):
         """The control for the two tests above: a validator that always returns

@@ -13,7 +13,7 @@
     "and inbox, vendor matching that never creates vendors, vendor data "
     "suggestions, bank checks, the duplicate rule and bill decoding. "
     "See README.md.",
-    "version": "19.0.1.12.5",
+    "version": "19.0.1.12.6",
     "license": "LGPL-3",
     "author": "Goodahead Oy",
     "website": "https://www.goodahead.com/",
