@@ -3,13 +3,17 @@
 # catches it the morning after, not at a customer's next upgrade.
 #
 # Scheduled workflows only run from the default branch, so this one file tests
-# every branch listed in the matrix.
+# every branch listed in the matrix. A pull request into a release branch runs
+# the same tests on its own changes, against the newest Odoo of that series,
+# before it can be merged (the same file is on every release branch for that).
 name: Nightly against Odoo head
 
 on:
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
+  pull_request:
+    branches: ["18.0", "19.0"]
 
 permissions:
   contents: read
@@ -26,11 +30,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - series: "19.0"
-            python: "3.12"
-          - series: "18.0"
-            python: "3.12"
+        # A pull request tests only the branch it targets; the nightly tests all.
+        series: ${{ github.event_name == 'pull_request' && fromJSON(format('["{0}"]', github.base_ref)) || fromJSON('["19.0", "18.0"]') }}
+        python: ["3.12"]
     services:
       postgres:
         image: postgres:16
@@ -46,11 +48,12 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - name: Check out the modules (${{ matrix.series }})
+      - name: Check out the modules (${{ matrix.series }}, or the pull request)
         uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.series }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || matrix.series }}
           path: addons
+          persist-credentials: false
 
       - name: Check out Odoo ${{ matrix.series }} head
         run: git clone --depth 1 --branch "${{ matrix.series }}" https://github.com/odoo/odoo.git odoo
@@ -106,42 +109,70 @@ jobs:
           # The *_migration_community adapters need the community APIX modules
           # (connector_apix and its stack), which this run does not install;
           # they are only for sites moving off those modules.
-          modules=$(for manifest in addons/*/__manifest__.py; do
+          all=$(for manifest in addons/*/__manifest__.py; do
             basename "$(dirname "$manifest")"
-          done | grep -v '_migration_community$' | sort | paste -sd, -)
-          tags=$(echo "$modules" | sed 's/[^,]*/\/&/g')
-          echo "Modules: $modules"
+          done | grep -v '_migration_community$' | sort)
+
+          # goodahead_bill_approval holds every vendor bill and credit note for
+          # two approvals before it can post. That is its job, and it refuses
+          # the postings the e-invoicing tests make, so it gets its own database.
+          approval=$(echo "$all" | grep -x 'goodahead_bill_approval' | paste -sd, - || true)
+          einvoicing=$(echo "$all" | grep -vx 'goodahead_bill_approval' | paste -sd, -)
+
+          # No demo data on either series (18.0 loads it by default, 19.0 does
+          # not): the tests build their own records and count what they made.
+          run_suite() {
+            db=$1
+            modules=$2
+            tags=$(echo "$modules" | sed 's/[^,]*/\/&/g')
+            echo "Database $db, modules: $modules"
+            python odoo/odoo-bin \
+              --config=/dev/null \
+              --db_host=localhost --db_port=5432 \
+              --db_user=odoo --db_password=odoo \
+              --addons-path="$PWD/odoo/addons,$PWD/addons,$PWD/oca-addons" \
+              --data-dir="$RUNNER_TEMP/odoo-data" \
+              -d "$db" \
+              --without-demo=True \
+              -i "$modules" \
+              --test-tags "$tags" \
+              --stop-after-init --no-http \
+              --log-level=info \
+              2>&1 | tee "odoo-$db.log"
+          }
 
           set -o pipefail
-          python odoo/odoo-bin \
-            --config=/dev/null \
-            --db_host=localhost --db_port=5432 \
-            --db_user=odoo --db_password=odoo \
-            --addons-path="$PWD/odoo/addons,$PWD/addons,$PWD/oca-addons" \
-            --data-dir="$RUNNER_TEMP/odoo-data" \
-            -d nightly \
-            -i "$modules" \
-            --test-tags "$tags" \
-            --stop-after-init --no-http \
-            --log-level=info \
-            2>&1 | tee odoo.log
+          status=0
+          run_suite einvoicing "$einvoicing" || status=1
+          if [ -n "$approval" ]; then
+            run_suite approval "$approval" || status=1
+          fi
+          exit $status
 
       - name: Check the result
         if: always()
         run: |
-          result=$(grep -E "odoo.tests.result: [0-9]+ failed, [0-9]+ error\(s\) of [0-9]+ tests" odoo.log | tail -1 || true)
-          echo "- Result: ${result:-no test result line (install failed?)}" >> "$GITHUB_STEP_SUMMARY"
-          echo "$result"
-          grep -E "^(FAIL|ERROR): |Traceback|CRITICAL" odoo.log | head -50 || true
-          case "$result" in
-            *" 0 failed, 0 error(s) of "*) exit 0 ;;
-            *) echo "::error::${{ matrix.series }} fails on Odoo ${{ steps.commits.outputs.odoo_sha }}"; exit 1 ;;
-          esac
+          failed=0
+          for log in odoo-*.log; do
+            [ -e "$log" ] || { echo "No log was written (the run step failed early)"; failed=1; continue; }
+            result=$(grep -E "odoo.tests.result: [0-9]+ failed, [0-9]+ error\(s\) of [0-9]+ tests" "$log" | tail -1 || true)
+            echo "- $log: ${result:-no test result line (install failed?)}" >> "$GITHUB_STEP_SUMMARY"
+            echo "$log: $result"
+            grep -E "(FAIL|ERROR): Test|Traceback|CRITICAL" "$log" | head -50 || true
+            case "$result" in
+              *" 0 failed, 0 error(s) of "*) ;;
+              *) failed=1 ;;
+            esac
+          done
+          if [ "$failed" != 0 ]; then
+            echo "::error::${{ matrix.series }} fails on Odoo ${{ steps.commits.outputs.odoo_sha }}"
+            exit 1
+          fi
 
-      - name: Keep the log
+      - name: Keep the logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: odoo-${{ matrix.series }}.log
-          path: odoo.log
+          name: odoo-${{ matrix.series }}-logs
+          path: odoo-*.log
           retention-days: 14
