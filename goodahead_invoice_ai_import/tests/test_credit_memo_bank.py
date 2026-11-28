@@ -326,15 +326,37 @@ class TestCreditMemoBank(TransactionCase):
         self.assertEqual(employee_row.partner_id.name, "ZZ Employee")
 
     @skip_method_unless_profile(PROFILE_SEARCH_PLAN_18)
-    def test_an_iban_held_by_an_employee_is_recorded_on_the_vendor_on_18_search_plan(
+    def test_an_iban_held_by_an_employee_is_only_named_in_the_chatter_on_18_search_plan(
         self,
     ):
         """18.0 builds from April 2026 on look the number up among the vendor's
-        own accounts only, and create it there when missing (as 19.0 does)."""
-        move, _employee_row = self._import_with_the_iban_held_by_an_employee()
+        own accounts only. Since the AI reader never creates a bank account
+        (security fix), a number registered to somebody else is neither copied
+        onto the vendor, nor stated on the bill, nor offered as a suggestion:
+        the chatter names whose it is."""
+        move, employee_row = self._import_with_the_iban_held_by_an_employee()
 
-        self.assertEqual(move.partner_bank_id.partner_id, self.vendor)
-        self.assertEqual(move.partner_bank_id.sanitized_acc_number, VENDOR_IBAN)
+        self.assertFalse(move.partner_bank_id, "no account is stated on the bill")
+        self.assertFalse(
+            self.Bank.with_context(active_test=False).search(
+                [("partner_id", "=", self.vendor.id)]
+            ),
+            "the employee's number is not copied onto the vendor",
+        )
+        self.assertEqual(employee_row.partner_id.name, "ZZ Employee")
+        self.assertFalse(
+            self.env["goodahead.vendor.data.suggestion"].search(
+                [("move_id", "=", move.id), ("field_name", "=", "bank_account")]
+            ),
+            "a number registered to another partner is not offered as a suggestion",
+        )
+        self.assertTrue(
+            any(
+                "ZZ Employee" in (message.body or "")
+                for message in move.message_ids
+            ),
+            "the chatter names who holds the number",
+        )
 
     @skip_method_unless_profile(PROFILE_LEGACY)
     def test_an_iban_held_by_an_employee_is_not_copied_onto_the_vendor(self):
